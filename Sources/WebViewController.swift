@@ -92,7 +92,7 @@ final class WebViewController: UIViewController {
         }
     }
 
-    /// Push tapped while running → navigate the SPA via its hash route.
+    /// Push tapped while running → navigate the SPA to the notification's route.
     @objc private func openRoute(_ note: Notification) {
         guard let route = note.userInfo?["route"] as? String else { return }
         apply(route: route)
@@ -107,8 +107,7 @@ final class WebViewController: UIViewController {
     /// the next (post-login) load.
     private func registerPush() {
         guard let token = PushManager.shared.deviceToken, webView.url != nil else { return }
-        let endpoint = AppConfig.startURL.appendingPathComponent("api.adp").absoluteString
-            + "?action=push_register"
+        let endpoint = AppConfig.apiURL.absoluteString + "?action=push_register"
         let js = """
         fetch(\(escapeForJS(endpoint)), {
           method: 'POST',
@@ -120,13 +119,32 @@ final class WebViewController: UIViewController {
         webView.evaluateJavaScript(js)
     }
 
+    /// Navigate the SPA to a notification route. Routes are the app's internal hash
+    /// tokens (e.g. "#/message/123?c=4"), which is what the server puts in a push.
     private func apply(route: String) {
-        let hash = route.hasPrefix("#") ? route : "#" + route
+        let token = route.hasPrefix("#") ? route : "#" + route
         if webView.url != nil {
-            let js = "location.hash = \(escapeForJS(hash));"
+            // Warm navigation. The clean-URL SPA routes on `popstate`, not `hashchange`,
+            // so assigning `location.hash` no longer navigates. Instead we synthesize a
+            // click on a hidden "#/…" anchor: the clean-URL build's own document-level
+            // click interceptor catches `a[href^="#/"]` and routes it through go() (clean
+            // paths); the older hash-router build simply performs the anchor's default
+            // navigation, setting location.hash → hashchange. Works on both builds.
+            let js = """
+            (function (t) {
+              var a = document.createElement('a');
+              a.href = t;
+              a.style.display = 'none';
+              document.body.appendChild(a);
+              a.click();
+              setTimeout(function () { a.remove(); }, 0);
+            })(\(escapeForJS(token)));
+            """
             webView.evaluateJavaScript(js)
         } else {
-            let url = AppConfig.startURL.absoluteString + hash
+            // Cold launch (view not loaded yet): load the entry page with the hash. The
+            // SPA's boot shim upgrades an incoming "#/…" deep link to its clean path.
+            let url = AppConfig.startURL.absoluteString + token
             if let u = URL(string: url) { webView.load(URLRequest(url: u)) }
         }
     }
