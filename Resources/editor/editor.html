@@ -1,0 +1,119 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<link rel="stylesheet" href="trix.css">
+<script src="trix.js"></script>
+<style>
+  :root { color-scheme: light dark; }
+  html, body { margin: 0; padding: 0; height: 100%;
+    font: -apple-system-body; background: transparent;
+    -webkit-text-size-adjust: 100%; }
+  trix-toolbar { position: sticky; top: 0; z-index: 2;
+    background: canvas; padding: 4px 6px;
+    border-bottom: 1px solid color-mix(in srgb, canvasText 15%, transparent); }
+  /* drop the tools we don't support natively (file button handled by the app) */
+  trix-toolbar .trix_button_group--file-tools,
+  trix-toolbar .trix_button--icon-attach { display: none; }
+  trix-editor { border: none; min-height: 160px; padding: 12px 14px;
+    font: -apple-system-body; outline: none; }
+  trix-editor:empty:not(:focus)::before { color: color-mix(in srgb, canvasText 40%, transparent); }
+</style>
+<form>
+  <input id="content" type="hidden" name="content">
+  <trix-editor input="content" placeholder="Write…"></trix-editor>
+</form>
+<script>
+  var editorEl = document.querySelector("trix-editor");
+  var input = document.getElementById("content");
+
+  function post(msg) {
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.composer) {
+      window.webkit.messageHandlers.composer.postMessage(msg);
+    }
+  }
+
+  // Notify Swift as content changes (so it can enable/disable Post).
+  editorEl.addEventListener("trix-change", function () {
+    post({ type: "change", html: input.value, length: editorEl.editor.getDocument().toString().trim().length });
+  });
+  editorEl.addEventListener("trix-initialize", function () { post({ type: "ready" }); });
+
+  // Called by Swift after it uploads an image via the native API.
+  window.dcampInsertImage = function (url) {
+    var attachment = new Trix.Attachment({
+      url: url, href: url, contentType: "image",
+      content: '<img src="' + url + '">'
+    });
+    editorEl.editor.insertAttachment(attachment);
+    editorEl.focus();
+  };
+
+  // Called by Swift to read the current HTML on demand.
+  window.dcampGetHTML = function () { return input.value; };
+
+  // Called by Swift to focus the editor.
+  window.dcampFocus = function () { editorEl.focus(); };
+
+  // Called by Swift to clear the editor after sending.
+  window.dcampClear = function () { editorEl.editor.loadHTML(""); };
+
+  // Called by Swift to preload existing content (edit mode).
+  window.dcampLoadHTML = function (h) { try { editorEl.editor.loadHTML(h || ""); } catch (e) {} };
+
+  // Called by Swift for "Quote & reply": insert a blockquote then a fresh line.
+  window.dcampInsertQuote = function (h) {
+    var ed = editorEl.editor;
+    var doc = ed.getDocument();
+    ed.setSelectedRange([doc.getLength(), doc.getLength()]);
+    if (doc.getLength() > 0) ed.insertLineBreak();
+    ed.insertHTML("<blockquote>" + (h || "") + "</blockquote>");
+    ed.insertLineBreak();
+    editorEl.focus();
+  };
+
+  // Called by Swift to set the placeholder text.
+  window.dcampSetPlaceholder = function (t) { editorEl.setAttribute("placeholder", t); };
+
+  // --- @mention autocomplete ---------------------------------------------
+  var mentionStart = -1;  // document offset of the "@" currently being typed
+
+  function scanMention() {
+    var ed = editorEl.editor;
+    var range = ed.getSelectedRange();
+    if (!range || range[0] !== range[1]) { mentionStart = -1; return null; }
+    var caret = range[0];
+    var text = ed.getDocument().toString();
+    var i = caret - 1;
+    while (i >= 0) {
+      var ch = text[i];
+      if (ch === "@") {
+        var before = i > 0 ? text[i - 1] : " ";
+        if (/\s|[()\[\]]/.test(before) || i === 0) {
+          var q = text.substring(i + 1, caret);
+          if (/^[\w .'-]*$/.test(q)) { mentionStart = i; return q; }
+        }
+        break;
+      }
+      if (/\s/.test(ch)) break;
+      i--;
+    }
+    mentionStart = -1;
+    return null;
+  }
+
+  editorEl.addEventListener("trix-selection-change", function () {
+    var q = scanMention();
+    post({ type: "mention", q: q });
+  });
+
+  // Called by Swift when a mention is chosen: replace the "@query" with a link.
+  window.dcampInsertMention = function (id, name) {
+    var ed = editorEl.editor;
+    if (mentionStart < 0) return;
+    var caret = ed.getSelectedRange()[0];
+    ed.setSelectedRange([mentionStart, caret]);
+    ed.insertHTML('<a href="#/p/' + id + '">@' + name + '</a> ');
+    mentionStart = -1;
+    post({ type: "mention", q: null });
+    editorEl.focus();
+  };
+</script>

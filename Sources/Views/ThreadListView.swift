@@ -1,0 +1,169 @@
+import SwiftUI
+
+/// Forum thread list, styled like the dcamp web board: title + New message,
+/// filter pills, and rich rows (subject, category, preview, author + machine).
+struct ThreadListView: View {
+    let board: Board
+    @Binding var path: [Dest]
+
+    @Environment(SessionStore.self) private var session
+    @Environment(Router.self) private var router
+    @State private var rows: [MessageRow] = []
+    @State private var total = 0
+    @State private var loading = false
+    @State private var filter: Filter = .all
+    @State private var composing = false
+
+    private let api = DcampAPI.shared
+
+    enum Filter: String { case all, popular, posted, commented, mentioned }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                header
+                SummarizeBar(kind: .forum(board.id, board.name))
+                filterBar
+                threadRows
+            }
+            .padding(18)
+            .dcColumn()
+        }
+        .background(Color.dcBg)
+        .scrollContentBackground(.hidden)
+        .navigationTitle(board.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $composing) {
+            ComposeView(mode: .newThread(board: board)) { newID in
+                Task { await load(reset: true) }
+                path.append(.thread(newID))
+            }
+        }
+        .task(id: board.id) { await load(reset: true) }
+        .refreshable { await load(reset: true) }
+    }
+
+    private var header: some View {
+        HStack(alignment: .top) {
+            HStack(spacing: 10) {
+                Image(systemName: ForumStyle.icon(board))
+                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                    .frame(width: 32, height: 32)
+                    .background(ForumStyle.tint(board), in: RoundedRectangle(cornerRadius: 8))
+                Text(board.name).font(.system(size: 26, weight: .heavy)).foregroundStyle(Color.dcInk)
+            }
+            Spacer()
+            if session.canPost {
+                Button { composing = true } label: { Label("New message", systemImage: "plus") }
+                    .buttonStyle(DCPrimaryButtonStyle())
+            }
+        }
+    }
+
+    private var filterBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                DCFilterPill(icon: "flame", title: "Popular", active: filter == .popular) { toggle(.popular) }
+                DCFilterPill(icon: "square.and.pencil", title: "I posted", active: filter == .posted) { toggle(.posted) }
+                DCFilterPill(icon: "bubble.left", title: "I commented", active: filter == .commented) { toggle(.commented) }
+                DCFilterPill(icon: "at", title: "I'm mentioned", active: filter == .mentioned) { toggle(.mentioned) }
+            }
+        }
+    }
+
+    @ViewBuilder private var threadRows: some View {
+        if loading && rows.isEmpty {
+            ProgressView().frame(maxWidth: .infinity).padding(.top, 40)
+        } else if rows.isEmpty {
+            ContentUnavailableView("No threads yet", systemImage: "tray").padding(.top, 30)
+        } else {
+            VStack(spacing: 0) {
+                ForEach(rows) { row in
+                    Button { path.append(.thread(row.id)) } label: { ThreadRowView(row: row) }
+                        .buttonStyle(.plain)
+                    Divider().background(Color.dcLine)
+                }
+                if rows.count < total {
+                    ProgressView().frame(maxWidth: .infinity).padding().task { await load(reset: false) }
+                }
+            }
+            .dcCard(padding: 4)
+        }
+    }
+
+    private func toggle(_ f: Filter) {
+        filter = (filter == f) ? .all : f
+        Task { await load(reset: true) }
+    }
+
+    private func load(reset: Bool) async {
+        if loading { return }
+        loading = true; defer { loading = false }
+        let offset = reset ? 0 : rows.count
+        var params = ["project_id": String(board.id), "offset": String(offset), "limit": "30"]
+        switch filter {
+        case .popular: params["popular"] = "1"
+        case .posted: params["mine"] = "posted"
+        case .commented: params["mine"] = "commented"
+        case .mentioned: params["mine"] = "mentioned"
+        case .all: break
+        }
+        if let page: MessagesPage = try? await api.call("messages", params) {
+            if reset { rows = page.messages } else { rows.append(contentsOf: page.messages) }
+            total = page.total ?? rows.count
+        }
+    }
+}
+
+// MARK: - Thread row
+
+struct ThreadRowView: View {
+    let row: MessageRow
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                if row.isPinned { Image(systemName: "pin.fill").font(.caption2).foregroundStyle(.orange) }
+                Text(row.displaySubject).font(.system(size: 18, weight: .bold)).foregroundStyle(Color.dcInk)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let cat = row.categoryName, !cat.isEmpty { CategoryPill(name: cat, emoji: row.categoryEmoji) }
+            }
+            if let preview = row.preview, !preview.isEmpty {
+                Text(preview).font(.system(size: 15)).foregroundStyle(Color.dcInkSoft).lineLimit(1)
+            }
+            HStack(spacing: 8) {
+                AuthorLine(person: row.author, date: row.createdAt)
+                if let n = row.commentCount, n > 0 {
+                    Text("·").foregroundStyle(Color.dcMuted)
+                    Label("\(n)", systemImage: "bubble.right").font(.system(size: 13)).foregroundStyle(Color.dcMuted)
+                }
+            }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+}
+
+struct CategoryPill: View {
+    let name: String
+    var emoji: String?
+    var body: some View {
+        HStack(spacing: 3) {
+            if let e = emoji, !e.isEmpty { Image(systemName: sfName(e)).font(.system(size: 10)) }
+            Text(name)
+        }
+        .font(.system(size: 12, weight: .semibold))
+        .foregroundStyle(Color.dcAccentInk)
+        .padding(.horizontal, 8).padding(.vertical, 2)
+        .background(Color.dcAccent.opacity(0.12), in: Capsule())
+    }
+    // dcamp stores FontAwesome-ish names; map a few common ones to SF Symbols.
+    private func sfName(_ n: String) -> String {
+        switch n {
+        case "handshake-angle", "handshake": return "hands.sparkles"
+        case "circle-question", "question": return "questionmark.circle"
+        default: return "tag"
+        }
+    }
+}

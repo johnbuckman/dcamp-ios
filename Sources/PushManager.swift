@@ -39,6 +39,20 @@ final class PushManager {
         NotificationCenter.default.post(name: .dcampPushTokenReady, object: nil)
     }
 
+    /// Ask for permission (once logged in) and register the APNs token with the
+    /// server over the bearer API. Safe to call repeatedly; no-ops without a token.
+    @MainActor
+    func enablePush() async {
+        await requestAuthorization()
+        await registerToken()
+    }
+
+    @MainActor
+    func registerToken() async {
+        guard let token = deviceToken else { return }
+        await DcampAPI.shared.pushRegister(token: token, platform: "apns")
+    }
+
     /// Extracts a dcamp hash-route from a push payload, supporting either a top-level
     /// `route` key or a custom `dcamp.route` object.
     static func route(from payload: [AnyHashable: Any]) -> String? {

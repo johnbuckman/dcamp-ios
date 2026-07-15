@@ -1,0 +1,297 @@
+import SwiftUI
+import Combine
+
+struct PersonRef: Identifiable { let id: Int }
+
+/// Navigation destinations for the single-column stack (mirrors the web app,
+/// which is one centered column with a persistent top bar — not master/detail).
+enum Dest: Hashable { case board(Int), thread(Int), chat, dms, dm(Int), search, find }
+
+/// App shell: a `NavigationStack` over the warm-paper forums home, matching the
+/// dcamp web layout. Notifications + account live in the top bar.
+struct MainView: View {
+    @Environment(SessionStore.self) private var session
+    @Environment(Router.self) private var router
+    @Environment(UIStrings.self) private var strings
+    @Environment(SummaryPin.self) private var summaryPin
+    @Environment(\.horizontalSizeClass) private var hSize
+
+    @State private var path: [Dest] = []
+    @State private var showAccount = false
+    @State private var showNotifs = false
+    @State private var notifStore = NotificationsStore()
+
+    var body: some View {
+        HStack(spacing: 0) {
+            if hSize == .regular && summaryPin.visible {
+                SummarySidebarView().frame(width: 340)
+                Divider()
+            }
+            stack
+        }
+        .tint(Color.dcAccent)
+        .sheet(isPresented: $showAccount) { SettingsView().environment(session).environment(router) }
+        .sheet(isPresented: $showNotifs) {
+            NotificationsView(store: notifStore) { router.threadID = $0 }
+                .environment(session).environment(router)
+        }
+        .sheet(item: personSheet) { ref in
+            PersonCardView(personID: ref.id).environment(session).environment(router)
+        }
+        .task { await startLive() }
+        .onChange(of: router.threadID) { _, id in if let id { path.append(.thread(id)); router.threadID = nil } }
+        .onChange(of: router.dmID) { _, id in if let id { path.append(.dm(id)); router.dmID = nil } }
+        .onReceive(NotificationCenter.default.publisher(for: .dcampOpenRoute)) { note in
+            if let id = DcampRoute.messageID(from: note.userInfo?["route"] as? String) { path.append(.thread(id)) }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .dcampPushTokenReady)) { _ in
+            Task { await PushManager.shared.registerToken() }
+        }
+    }
+
+    private var stack: some View {
+        NavigationStack(path: $path) {
+            ForumsHomeView(path: $path)
+                .navigationDestination(for: Dest.self) { dest in
+                    destination(dest)
+                }
+                .dcampChrome(notifStore: notifStore, showNotifs: $showNotifs, showAccount: $showAccount)
+        }
+    }
+
+    @ViewBuilder private func destination(_ dest: Dest) -> some View {
+        switch dest {
+        case .board(let id):
+            if let board = session.boards.first(where: { $0.id == id }) {
+                ThreadListView(board: board, path: $path)
+            }
+        case .thread(let id): ThreadDetailView(messageID: id).id(id)
+        case .chat: ChatView()
+        case .dms: DMListView(path: $path)
+        case .dm(let id): DMThreadView(convoID: id).id(id)
+        case .search: SearchView(path: $path)
+        case .find: FindForumsView()
+        }
+    }
+
+    private var personSheet: Binding<PersonRef?> {
+        Binding(get: { router.personID.map(PersonRef.init) }, set: { router.personID = $0?.id })
+    }
+
+    private func startLive() async {
+        strings.lang = session.lang
+        await strings.load()
+        notifStore.start()
+
+        #if DEBUG
+        // Screenshot harness: skip the push prompt and jump to a screen so the
+        // redesign can be captured headlessly in the Simulator.
+        let env = ProcessInfo.processInfo.environment
+        if let screen = env["DCAMP_SHOT_SCREEN"] {
+            switch screen {
+            case "board": path = [.board(1)]
+            case "thread": path = [.thread(11670)]
+            case "shortthread": path = [.thread(230)]
+            case "chat": path = [.chat]
+            case "dms": path = [.dms]
+            case "dm": path = [.dm(125)]
+            case "settings": showAccount = true
+            case "ipadsummary": summaryPin.kind = .home; summaryPin.title = "Diaspora summary"
+            default: break
+            }
+            return
+        }
+        #endif
+
+        if let route = PushManager.shared.pendingRoute {
+            PushManager.shared.pendingRoute = nil
+            if let id = DcampRoute.messageID(from: route) { path.append(.thread(id)) }
+        }
+        await PushManager.shared.enablePush()
+    }
+}
+
+// MARK: - Persistent top-bar chrome (brand + search + bell + account)
+
+private struct DcampChrome: ViewModifier {
+    let notifStore: NotificationsStore
+    @Binding var showNotifs: Bool
+    @Binding var showAccount: Bool
+    @Environment(SessionStore.self) private var session
+
+    func body(content: Content) -> some View {
+        content
+            .background(Color.dcBg)
+            .toolbarBackground(Color.dcBg, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    HStack(spacing: 7) {
+                        Image(systemName: "cup.and.saucer.fill").foregroundStyle(Color.dcInk)
+                        Text("dcamp").font(.system(size: 18, weight: .heavy)).foregroundStyle(Color.dcInk)
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    NotificationsBell(count: notifStore.unread) { showNotifs = true }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showAccount = true } label: { Avatar(person: session.me, size: 28) }
+                }
+            }
+    }
+}
+
+private extension View {
+    func dcampChrome(notifStore: NotificationsStore, showNotifs: Binding<Bool>, showAccount: Binding<Bool>) -> some View {
+        modifier(DcampChrome(notifStore: notifStore, showNotifs: showNotifs, showAccount: showAccount))
+    }
+}
+
+// MARK: - Forums home (card grid)
+
+struct ForumsHomeView: View {
+    @Binding var path: [Dest]
+    @Environment(SessionStore.self) private var session
+    @State private var dmUnread = 0
+
+    private let cols = [GridItem(.adaptive(minimum: 300), spacing: 14)]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Forums").font(.system(size: 32, weight: .heavy)).foregroundStyle(Color.dcInk)
+                    Text("Forums: \(session.boards.count)").font(.system(size: 15)).foregroundStyle(Color.dcMuted)
+                }
+
+                SummarizeBar(kind: .home)
+
+                LazyVGrid(columns: cols, spacing: 14) {
+                    ForEach(session.boards) { board in
+                        Button { path.append(.board(board.id)) } label: { ForumCard(board: board) }
+                            .buttonStyle(.plain)
+                    }
+                }
+
+                DCSectionLabel(text: "Other").padding(.top, 6)
+                LazyVGrid(columns: cols, spacing: 14) {
+                    Button { path.append(.chat) } label: {
+                        OtherCard(icon: "bubble.left.and.bubble.right.fill", tint: Color.dcAccent,
+                                  title: "Chat Room", subtitle: "Live community chat for Decent espresso owners.")
+                    }.buttonStyle(.plain)
+                    Button { path.append(.dms) } label: {
+                        OtherCard(icon: "envelope.fill", tint: Color(red: 0.55, green: 0.36, blue: 0.86),
+                                  title: "Direct Messages", subtitle: "Private conversations.", badge: dmUnread)
+                    }.buttonStyle(.plain)
+                    if session.showRegions || session.showRoasters {
+                        Button { path.append(.find) } label: {
+                            OtherCard(icon: "map.fill", tint: Color(red: 0.20, green: 0.60, blue: 0.86),
+                                      title: "Find forums", subtitle: "Discover regional & roaster forums.")
+                        }.buttonStyle(.plain)
+                    }
+                }
+            }
+            .padding(18)
+            .dcColumn()
+        }
+        .background(Color.dcBg)
+        .scrollContentBackground(.hidden)
+        .navigationBarTitleDisplayMode(.inline)
+        .task { dmUnread = await DcampAPI.shared.dmUnread() }
+        .refreshable { dmUnread = await DcampAPI.shared.dmUnread() }
+    }
+}
+
+/// Board metadata → icon + tint, mirroring the web's per-forum badges.
+enum ForumStyle {
+    static func icon(_ board: Board) -> String {
+        switch board.slug {
+        case "general-forum": return "bubble.left.and.bubble.right.fill"
+        case "most-popular-topics": return "flame.fill"
+        case "problems": return "wrench.and.screwdriver.fill"
+        case "programmer-s-forum": return "chevron.left.forwardslash.chevron.right"
+        default: return "bubble.left.fill"
+        }
+    }
+    static func tint(_ board: Board) -> Color {
+        Color(hex: board.color) ?? Color.dcAccent
+    }
+}
+
+struct ForumCard: View {
+    let board: Board
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Image(systemName: ForumStyle.icon(board))
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 38, height: 38)
+                .background(ForumStyle.tint(board), in: RoundedRectangle(cornerRadius: 10))
+            Text(board.name).font(.system(size: 19, weight: .bold)).foregroundStyle(Color.dcInk)
+            if let d = board.description, !d.isEmpty {
+                Text(d).font(.system(size: 15)).foregroundStyle(Color.dcInkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let n = board.messageCount {
+                Text("Messages: \(n)").font(.system(size: 14)).foregroundStyle(Color.dcMuted).padding(.top, 2)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 180, alignment: .topLeading)
+        .dcCard()
+    }
+}
+
+struct OtherCard: View {
+    let icon: String; let tint: Color; let title: String; let subtitle: String
+    var badge: Int = 0
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top) {
+                Image(systemName: icon)
+                    .font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
+                    .frame(width: 38, height: 38)
+                    .background(tint, in: RoundedRectangle(cornerRadius: 10))
+                Spacer()
+                if badge > 0 {
+                    Text("\(badge)").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background(Color.red, in: Capsule())
+                }
+            }
+            Text(title).font(.system(size: 19, weight: .bold)).foregroundStyle(Color.dcInk)
+            Text(subtitle).font(.system(size: 15)).foregroundStyle(Color.dcInkSoft)
+        }
+        .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
+        .dcCard()
+    }
+}
+
+// MARK: - Account sheet
+
+struct AccountSheet: View {
+    @Environment(SessionStore.self) private var session
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    HStack(spacing: 12) {
+                        Avatar(person: session.me, size: 52)
+                        VStack(alignment: .leading) {
+                            Text(session.me?.name ?? "—").font(.headline)
+                            if session.isAdmin { Text("Admin").font(.caption).foregroundStyle(.secondary) }
+                        }
+                    }.padding(.vertical, 4)
+                }
+                Section {
+                    Button(role: .destructive) { Task { await session.logout(); dismiss() } } label: {
+                        Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
+                    }
+                }
+            }
+            .navigationTitle("Account").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
+        }
+    }
+}

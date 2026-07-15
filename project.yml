@@ -2,7 +2,7 @@ name: Dcamp
 options:
   bundleIdPrefix: com.decentespresso
   deploymentTarget:
-    iOS: "16.0"
+    iOS: "17.0"
   createIntermediateGroups: true
 
 settings:
@@ -17,7 +17,7 @@ targets:
   Dcamp:
     type: application
     platform: iOS
-    deploymentTarget: "16.0"
+    deploymentTarget: "17.0"
     sources:
       - path: Sources
       - path: Resources

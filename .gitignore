@@ -19,3 +19,5 @@ secrets/
 # CocoaPods / SPM (not used yet, but ignore if added)
 Pods/
 .build/
+build-sim/
+build/

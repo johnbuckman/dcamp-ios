@@ -1,15 +1,23 @@
 import SwiftUI
 
-/// SwiftUI entry point that hosts the UIKit web container full-screen.
+/// Top-level gate: launching → login → main. Driven by `SessionStore.phase`.
 struct RootView: View {
-    var body: some View {
-        WebContainer()
-            .ignoresSafeArea()
-    }
-}
+    @Environment(SessionStore.self) private var session
 
-/// Bridges the UIKit WebViewController into SwiftUI.
-struct WebContainer: UIViewControllerRepresentable {
-    func makeUIViewController(context: Context) -> WebViewController { WebViewController() }
-    func updateUIViewController(_ controller: WebViewController, context: Context) {}
+    var body: some View {
+        content
+            .tint(Color.dcAccent)
+            .preferredColorScheme(.light)   // dcamp web is light-only ("warm paper")
+    }
+
+    @ViewBuilder private var content: some View {
+        switch session.phase {
+        case .launching:
+            ZStack { Color.dcBg.ignoresSafeArea(); ProgressView().controlSize(.large) }
+        case .loggedOut:
+            LoginView()
+        case .loggedIn:
+            MainView()
+        }
+    }
 }
