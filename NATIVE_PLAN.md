@@ -222,7 +222,7 @@ mentions and cross-post links work everywhere the renderer is used.
   now returns ok and stores the row. ⚠️ This touches the committed push file — review.
 
 ## Local test fixtures (disposable dev DB only — not prod)
-Made `claudetest@example.com` / `Test123pw` a posting-capable beta user for testing:
+Made a synthetic `…@example.com` account a posting-capable beta user for testing:
 a `dcamp_members` row + a qualifying `carts`/`cart_detail` DE1 order (survives the
 owner reconcile) + a fake `dcamp_bc_user_tokens` row (satisfies the beta BC-link gate).
 Test content created: thread 11692, comments on 11670/11692.
