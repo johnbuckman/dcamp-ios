@@ -69,6 +69,15 @@ final class ComposerModel {
         webView?.evaluateJavaScript("dcampSwapUrlTitle(\(jsString(url)), \(jsString(title)))")
     }
 
+    /// Apply text colour / highlight to the selection (nil clears that channel).
+    func setColor(fg: String?, bg: String?) {
+        let f = fg.map { jsString($0) } ?? "null"
+        let b = bg.map { jsString($0) } ?? "null"
+        webView?.evaluateJavaScript("dcampSetColor(\(f), \(b))")
+    }
+    func clearColor() { webView?.evaluateJavaScript("dcampClearColor()") }
+    func insertHR() { webView?.evaluateJavaScript("dcampInsertHR()") }
+
     /// Read the editor's current HTML directly (Trix keeps the hidden input in
     /// sync even if change events don't reach Swift), so posting never depends on
     /// the change-event plumbing.
@@ -118,7 +127,10 @@ struct InlineComposer: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.dcLineStrong, lineWidth: 1))
                 .overlay(alignment: .top) { MentionOverlay(model: model).padding(.top, 52).padding(.horizontal, 8) }
-            HStack {
+            HStack(spacing: 14) {
+                ComposerColorButton(model: model)
+                Button { model.insertHR() } label: { Image(systemName: "minus").font(.system(size: 16, weight: .bold)) }
+                    .foregroundStyle(Color.dcMuted)
                 Spacer()
                 Button("Send") { send() }
                 .buttonStyle(DCPrimaryButtonStyle())
@@ -156,6 +168,36 @@ struct InlineComposer: View {
             }
             sending = false
         }
+    }
+}
+
+/// Text-colour + highlight picker for the composer (applies fgColor/bgColor Trix attrs).
+struct ComposerColorButton: View {
+    let model: ComposerModel
+    @State private var show = false
+    private let fg: [(String, Color)] = [("#dc2626", .red), ("#ea580c", .orange), ("#16a34a", .green), ("#2563eb", .blue), ("#7c3aed", .purple), ("#111111", .black)]
+    private let bg: [(String, Color)] = [("#fef08a", Color.yellow.opacity(0.55)), ("#bbf7d0", Color.green.opacity(0.5)), ("#bfdbfe", Color.blue.opacity(0.5)), ("#fbcfe8", Color.pink.opacity(0.5))]
+
+    var body: some View {
+        Button { show = true } label: { Image(systemName: "paintpalette").font(.system(size: 16)) }
+            .foregroundStyle(Color.dcMuted)
+            .popover(isPresented: $show) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Text colour").font(.caption.bold()).foregroundStyle(Color.dcMuted)
+                    HStack(spacing: 10) { ForEach(fg, id: \.0) { hex, c in swatch(c) { model.setColor(fg: hex, bg: nil); show = false } } }
+                    Text("Highlight").font(.caption.bold()).foregroundStyle(Color.dcMuted)
+                    HStack(spacing: 10) { ForEach(bg, id: \.0) { hex, c in swatch(c) { model.setColor(fg: nil, bg: hex); show = false } } }
+                    Button("Clear") { model.clearColor(); show = false }.font(.footnote).padding(.top, 2)
+                }
+                .padding(16)
+                .presentationCompactAdaptation(.popover)
+            }
+    }
+    private func swatch(_ c: Color, _ act: @escaping () -> Void) -> some View {
+        Button(action: act) {
+            Circle().fill(c).frame(width: 26, height: 26)
+                .overlay(Circle().stroke(Color.dcLineStrong, lineWidth: 1))
+        }.buttonStyle(.plain)
     }
 }
 

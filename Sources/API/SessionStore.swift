@@ -104,6 +104,7 @@ final class SessionStore {
                 case .list(let i, let o): return "\(o ? "ol" : "ul")(\(i.count))"
                 case .image: return "img"
                 case .youtube: return "yt"
+                case .table(let r): return "table(\(r.count)x\(r.first?.count ?? 0))"
                 case .rule: return "hr"
                 }
             }

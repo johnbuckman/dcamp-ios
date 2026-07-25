@@ -123,7 +123,7 @@ struct MainView: View {
             switch screen {
             case "board": path = [.board(1)]
             case "problems": path = [.board(4)]
-            case "thread": path = [.thread(11670)]
+            case "thread": path = [.thread(Int(env["DCAMP_SHOT_THREAD"] ?? "") ?? 11670)]
             case "shortthread": path = [.thread(230)]
             case "chat": path = [.chat]
             case "dms": path = [.dms]

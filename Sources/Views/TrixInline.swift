@@ -8,8 +8,9 @@ enum Inline {
 
     static func parse(_ html: String) -> AttributedString {
         var out = AttributedString()
-        var bold = false, italic = false, code = false
+        var bold = false, italic = false, code = false, under = false
         var hrefStack: [String] = []
+        var colorStack: [(fg: Color?, bg: Color?)] = []   // <span style>/<mark> colour + highlight
 
         let ns = html as NSString
         var i = 0
@@ -23,11 +24,15 @@ enum Inline {
             else if bold { font = font.bold() }
             else if italic { font = font.italic() }
             run.font = font
+            if under { run.underlineStyle = .single }
+            if let bg = colorStack.last(where: { $0.bg != nil })?.bg { run.backgroundColor = bg }
             if let href = hrefStack.last {
                 let isMention = href.hasPrefix("#/p/")
                 run.foregroundColor = isMention ? .dcAccentInk : .dcLink   // green mention, blue link
                 if isMention { run.font = font.bold() } else { run.underlineStyle = .single }
                 if let url = routeURL(href) { run.link = url }
+            } else if let fg = colorStack.last(where: { $0.fg != nil })?.fg {
+                run.foregroundColor = fg
             }
             out.append(run)
         }
@@ -51,11 +56,22 @@ enum Inline {
             case "strong", "b": bold = !closing
             case "em", "i": italic = !closing
             case "code": code = !closing
+            case "u": under = !closing
             case "br": out.append(AttributedString("\n"))
             case "a":
                 if closing { if !hrefStack.isEmpty { hrefStack.removeLast() } }
                 else { hrefStack.append(TrixParser.attrValue(tagContent, "href") ?? "") }
-            default: break   // span, u, etc. — keep text, drop styling
+            case "span":
+                // dcamp's fgColor/bgColor Trix attributes → inline color/background-color.
+                if closing { if !colorStack.isEmpty { colorStack.removeLast() } }
+                else { colorStack.append(cssColors(TrixParser.attrValue(tagContent, "style") ?? "")) }
+            case "mark":
+                if closing { if !colorStack.isEmpty { colorStack.removeLast() } }
+                else {
+                    let c = cssColors(TrixParser.attrValue(tagContent, "style") ?? "")
+                    colorStack.append((fg: c.fg, bg: c.bg ?? Color.yellow.opacity(0.35)))
+                }
+            default: break
             }
         }
         return out
@@ -69,6 +85,35 @@ enum Inline {
             return URL(string: "dcamp://route?t=\(enc)")
         }
         return URL(string: href)
+    }
+
+    /// Extract `color` and `background-color` from an inline CSS `style` string.
+    static func cssColors(_ style: String) -> (fg: Color?, bg: Color?) {
+        func value(_ prop: String) -> Color? {
+            guard let re = try? NSRegularExpression(pattern: "(?:^|;)\\s*\(prop)\\s*:\\s*([^;]+)", options: .caseInsensitive) else { return nil }
+            let ns = style as NSString
+            guard let m = re.firstMatch(in: style, range: NSRange(location: 0, length: ns.length)), m.numberOfRanges > 1 else { return nil }
+            return cssColor(ns.substring(with: m.range(at: 1)).trimmingCharacters(in: .whitespaces))
+        }
+        return (fg: value("color"), bg: value("background-color") ?? value("background"))
+    }
+
+    /// Parse a single CSS colour value (#hex, rgb()/rgba(), or a few named).
+    static func cssColor(_ raw: String) -> Color? {
+        let v = raw.trimmingCharacters(in: .whitespaces).lowercased()
+        if v.hasPrefix("#") { return Color(hex: v) }
+        if v.hasPrefix("rgb") {
+            let nums = v.components(separatedBy: CharacterSet(charactersIn: "0123456789.").inverted).filter { !$0.isEmpty }
+            if nums.count >= 3, let r = Double(nums[0]), let g = Double(nums[1]), let b = Double(nums[2]) {
+                let a = nums.count >= 4 ? (Double(nums[3]) ?? 1) : 1
+                return Color(.sRGB, red: r/255, green: g/255, blue: b/255, opacity: a)
+            }
+            return nil
+        }
+        let named: [String: Color] = ["red": .red, "green": .green, "blue": .blue, "orange": .orange,
+            "yellow": .yellow, "purple": .purple, "pink": .pink, "black": .black, "white": .white,
+            "gray": .gray, "grey": .gray, "teal": .teal, "brown": .brown, "cyan": .cyan, "indigo": .indigo]
+        return named[v]
     }
 
     private static func tagName(_ content: String) -> String {

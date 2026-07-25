@@ -12,6 +12,7 @@ enum TrixBlock: Identifiable {
     case list(items: [AttributedString], ordered: Bool)
     case image(URL)
     case youtube(id: String)
+    case table(rows: [[AttributedString]])
     case rule
 
     var id: String {
@@ -22,6 +23,7 @@ enum TrixBlock: Identifiable {
         case .list(let i, let o): return "l\(o ? "o" : "u"):\(i.count)"
         case .image(let u): return "img:\(u.absoluteString)"
         case .youtube(let i): return "yt:\(i)"
+        case .table(let r): return "tbl:\(r.count)x\(r.first?.count ?? 0)"
         case .rule: return "hr"
         }
     }
@@ -50,12 +52,16 @@ enum TrixParser {
             case "blockquote":
                 blocks.append(.quote(parse(inner)))
             case "figure", "div":
-                if let img = firstImageURL(inner) { blocks.append(.image(img)) }
+                if inner.range(of: "<hr", options: .caseInsensitive) != nil { blocks.append(.rule) }
+                else if let img = firstImageURL(inner) { blocks.append(.image(img)) }
                 else if let yt = youtubeID(from: inner, attrs: attrs) { blocks.append(.youtube(id: yt)) }
                 else {
                     let a = Inline.parse(inner)
                     if !a.characters.isEmpty { blocks.append(.paragraph(a)) }
                 }
+            case "table":
+                let rows = tableRows(inner)
+                if !rows.isEmpty { blocks.append(.table(rows: rows)) }
             case "hr":
                 blocks.append(.rule)
             case "img":
@@ -87,6 +93,25 @@ enum TrixParser {
             if !a.characters.isEmpty { items.append(a) }
         }
         return items
+    }
+
+    // MARK: table
+
+    private static func tableRows(_ inner: String) -> [[AttributedString]] {
+        var rows: [[AttributedString]] = []
+        let ns = inner as NSString
+        let trRe = try! NSRegularExpression(pattern: "<tr[^>]*>(.*?)</tr>", options: [.dotMatchesLineSeparators, .caseInsensitive])
+        let cellRe = try! NSRegularExpression(pattern: "<t[dh][^>]*>(.*?)</t[dh]>", options: [.dotMatchesLineSeparators, .caseInsensitive])
+        for m in trRe.matches(in: inner, range: NSRange(location: 0, length: ns.length)) {
+            let rowHTML = ns.substring(with: m.range(at: 1))
+            let rns = rowHTML as NSString
+            var cells: [AttributedString] = []
+            for cm in cellRe.matches(in: rowHTML, range: NSRange(location: 0, length: rns.length)) {
+                cells.append(Inline.parse(rns.substring(with: cm.range(at: 1))))
+            }
+            if !cells.isEmpty { rows.append(cells) }
+        }
+        return rows
     }
 
     // MARK: media extraction
@@ -124,7 +149,7 @@ enum TrixParser {
 private final class BlockScanner {
     private let s: NSString
     private var i = 0
-    private static let blockTags = ["p", "ul", "ol", "h1", "h2", "h3", "blockquote", "figure", "div", "hr", "img", "iframe"]
+    private static let blockTags = ["p", "ul", "ol", "h1", "h2", "h3", "blockquote", "figure", "div", "hr", "img", "iframe", "table"]
 
     init(_ html: String) { self.s = html as NSString }
 
@@ -156,7 +181,7 @@ private final class BlockScanner {
             }
             // for nestable tags, find the LAST matching close at this level
             var end = cr
-            if tag == "blockquote" || tag == "ul" || tag == "ol" {
+            if tag == "blockquote" || tag == "ul" || tag == "ol" || tag == "table" {
                 end = lastBalancedClose(open: "<\(tag)", close: close, from: i) ?? cr
             }
             let inner = s.substring(with: NSRange(location: i, length: end.location - i))

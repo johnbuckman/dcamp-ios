@@ -116,6 +116,9 @@ struct TrixBlockView: View {
         case .youtube(let id):
             YouTubeCard(id: id)
 
+        case .table(let rows):
+            TrixTableView(rows: rows)
+
         case .rule:
             Divider()
         }
@@ -132,6 +135,36 @@ struct TrixBlockView: View {
         }
         .frame(height: 160)
         .frame(maxWidth: .infinity)
+    }
+}
+
+/// Renders a parsed table as a bordered grid (first row treated as a header).
+/// Scrolls horizontally so wide tables never break the content column.
+struct TrixTableView: View {
+    let rows: [[AttributedString]]
+    private var cols: Int { rows.map(\.count).max() ?? 0 }
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            VStack(spacing: 0) {
+                ForEach(Array(rows.enumerated()), id: \.offset) { r, row in
+                    HStack(spacing: 0) {
+                        ForEach(0..<cols, id: \.self) { c in
+                            Text(c < row.count ? row[c] : AttributedString(""))
+                                .font(r == 0 ? .system(size: 14, weight: .bold) : .system(size: 14))
+                                .frame(minWidth: 90, maxWidth: 240, alignment: .leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.horizontal, 10).padding(.vertical, 7)
+                                .frame(maxHeight: .infinity, alignment: .topLeading)
+                                .background(r == 0 ? Color.dcPanel : Color.clear)
+                                .overlay(Rectangle().stroke(Color.dcLine, lineWidth: 0.5))
+                        }
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.dcLineStrong, lineWidth: 1))
+        }
     }
 }
 

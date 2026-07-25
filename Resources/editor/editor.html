@@ -48,6 +48,33 @@
     });
   }
 
+  // --- text colour + highlight (fgColor/bgColor Trix attrs, matches dcamp.js) ---
+  try {
+    Trix.config.textAttributes.fgColor = {
+      styleProperty: "color", inheritable: true,
+      parser: function (el) { return el.style && el.style.color ? el.style.color : undefined; }
+    };
+    Trix.config.textAttributes.bgColor = {
+      styleProperty: "backgroundColor", inheritable: true,
+      parser: function (el) { return el.style && el.style.backgroundColor ? el.style.backgroundColor : undefined; }
+    };
+  } catch (e) {}
+  // Swift calls this from the native colour popover. null clears that channel.
+  window.dcampSetColor = function (fg, bg) {
+    var ed = editorEl.editor;
+    if (fg) { ed.activateAttribute("fgColor", fg); } else { ed.deactivateAttribute("fgColor"); }
+    if (bg) { ed.activateAttribute("bgColor", bg); } else { ed.deactivateAttribute("bgColor"); }
+    editorEl.focus();
+  };
+  window.dcampClearColor = function () {
+    var ed = editorEl.editor; ed.deactivateAttribute("fgColor"); ed.deactivateAttribute("bgColor"); editorEl.focus();
+  };
+  // Insert a horizontal rule (Trix has no HR block → content-attachment, like the web).
+  window.dcampInsertHR = function () {
+    try { editorEl.editor.insertAttachment(new Trix.Attachment({ content: "<hr>", contentType: "application/vnd.trix.horizontal-rule" })); editorEl.editor.insertLineBreak(); } catch (e) {}
+    editorEl.focus();
+  };
+
   // --- markdown auto-format as you type (ported from dcamp.js attachMarkdown) ---
   // When the user completes a markdown pattern, swap the raw markdown for real
   // rich-text formatting in place. Block markers fire on the trailing space;
