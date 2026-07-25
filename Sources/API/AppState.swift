@@ -8,6 +8,7 @@ final class Router {
     var personID: Int?
     var threadID: Int?
     var dmID: Int?
+    var threadSiblings: [Int] = []      // ordered thread ids of the board being browsed → prev/next nav
 
     func open(route token: String?) {
         if let pid = DcampRoute.personID(from: token) { personID = pid }

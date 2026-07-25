@@ -68,6 +68,13 @@ extension DcampAPI {
     }
     func bcUnlink() async { _ = try? await rawData("bc_unlink", [:]) }
 
+    /// Fetch a pasted URL's page title (the browser can't read a cross-origin <title>).
+    func urlTitle(_ url: String) async -> String {
+        struct R: Codable { var title: String? }
+        let r: R? = try? await call("url_title", ["url": url])
+        return r?.title ?? ""
+    }
+
     // MARK: - Settings / account
 
     func summaryPrefsGet() async -> SummaryPrefs { (try? await call("summary_prefs_get")) ?? SummaryPrefs() }

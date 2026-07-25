@@ -64,6 +64,11 @@ final class ComposerModel {
         webView?.evaluateJavaScript("dcampInsertQuote(\(jsString(html)))")
     }
 
+    /// Swap a pasted bare URL's visible text for the fetched page title.
+    func swapUrlTitle(url: String, title: String) {
+        webView?.evaluateJavaScript("dcampSwapUrlTitle(\(jsString(url)), \(jsString(title)))")
+    }
+
     /// Read the editor's current HTML directly (Trix keeps the hidden input in
     /// sync even if change events don't reach Swift), so posting never depends on
     /// the change-event plumbing.
@@ -255,6 +260,13 @@ struct ComposerWebView: UIViewRepresentable {
                 model.mentionQuery = body["q"] as? String
             case "submit":
                 model.submitRequested += 1
+            case "urltitle":
+                if let url = body["url"] as? String {
+                    Task {
+                        let title = await DcampAPI.shared.urlTitle(url)
+                        if !title.isEmpty { model.swapUrlTitle(url: url, title: title) }
+                    }
+                }
             default:
                 break
             }

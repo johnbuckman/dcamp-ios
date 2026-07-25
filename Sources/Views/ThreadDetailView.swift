@@ -9,6 +9,7 @@ struct ThreadDetailView: View {
     let commentAnchor: Int?
 
     @Environment(SessionStore.self) private var session
+    @Environment(Router.self) private var router
     @Environment(\.dismiss) private var dismiss
     @State private var currentID: Int
     @State private var message: MessageDetail?
@@ -31,6 +32,12 @@ struct ThreadDetailView: View {
         self.commentAnchor = commentAnchor
         _currentID = State(initialValue: messageID)
     }
+
+    // Prev/next thread navigation across the board's ordered thread list.
+    private var siblingIndex: Int? { router.threadSiblings.firstIndex(of: currentID) }
+    private var prevSibling: Int? { guard let i = siblingIndex, i > 0 else { return nil }; return router.threadSiblings[i - 1] }
+    private var nextSibling: Int? { guard let i = siblingIndex, i < router.threadSiblings.count - 1 else { return nil }; return router.threadSiblings[i + 1] }
+    private func goto(_ id: Int) { message = nil; comments = []; currentID = id }
 
     /// The first comment posted after the viewer's previous visit (for the marker).
     private var firstUnreadCommentID: Int? {
@@ -67,6 +74,14 @@ struct ThreadDetailView: View {
         .overlay { if loading && message == nil { ProgressView() } }
         .navigationTitle(message?.displaySubject ?? "")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                if siblingIndex != nil {
+                    Button { if let p = prevSibling { goto(p) } } label: { Image(systemName: "chevron.up") }.disabled(prevSibling == nil)
+                    Button { if let n = nextSibling { goto(n) } } label: { Image(systemName: "chevron.down") }.disabled(nextSibling == nil)
+                }
+            }
+        }
         .sheet(item: $editingMessage) { m in
             ComposeView(mode: .editThread(message: m)) { _ in Task { await load() } }
         }

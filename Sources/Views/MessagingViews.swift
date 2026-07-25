@@ -450,14 +450,83 @@ struct PeopleSearchSheet: View {
     }
 }
 
+/// New DM — multi-select people (chips) then start a 1:1 or group conversation.
 struct NewDMView: View {
     var onCreated: (Int) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+    @State private var results: [Recipient] = []
+    @State private var selected: [Recipient] = []
+    @State private var busy = false
+    @State private var error: String?
     private let api = DcampAPI.shared
 
     var body: some View {
-        PeopleSearchSheet(title: "New message") { r in
-            do { onCreated(try await api.dmCreate(participantIDs: [r.id])); return nil }
-            catch { return (error as? DcampAPI.APIError)?.message ?? error.localizedDescription }
+        NavigationStack {
+            VStack(spacing: 0) {
+                if !selected.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(selected) { r in
+                                HStack(spacing: 4) {
+                                    Text(r.name).font(.system(size: 13, weight: .semibold))
+                                    Image(systemName: "xmark.circle.fill").font(.system(size: 12))
+                                }
+                                .foregroundStyle(Color.dcAccentInk)
+                                .padding(.horizontal, 9).padding(.vertical, 5)
+                                .background(Color.dcAccent.opacity(0.12), in: Capsule())
+                                .onTapGesture { selected.removeAll { $0.id == r.id } }
+                            }
+                        }.padding(10)
+                    }
+                    Divider()
+                }
+                List(results) { r in
+                    Button { toggle(r) } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: isSelected(r) ? "checkmark.circle.fill" : "circle")
+                                .foregroundStyle(isSelected(r) ? Color.dcAccent : Color.dcMuted)
+                            Text(r.name).foregroundStyle(Color.dcInk)
+                            Spacer()
+                        }.contentShape(Rectangle())
+                    }.buttonStyle(.plain)
+                }
+                .overlay {
+                    if results.isEmpty {
+                        ContentUnavailableView("Find people", systemImage: "person.2",
+                                               description: Text("Search by name; pick one or more."))
+                    }
+                }
+            }
+            .searchable(text: $query, prompt: "Search people")
+            .onChange(of: query) { _, q in Task { await run(q) } }
+            .navigationTitle(selected.count > 1 ? "New group message" : "New message")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Start") { start() }.disabled(selected.isEmpty || busy).fontWeight(.semibold)
+                }
+            }
+            .alert("Something went wrong", isPresented: .constant(error != nil)) {
+                Button("OK") { error = nil }
+            } message: { Text(error ?? "") }
+        }
+    }
+
+    private func isSelected(_ r: Recipient) -> Bool { selected.contains { $0.id == r.id } }
+    private func toggle(_ r: Recipient) {
+        if isSelected(r) { selected.removeAll { $0.id == r.id } } else { selected.append(r) }
+    }
+    private func run(_ q: String) async {
+        guard q.trimmingCharacters(in: .whitespaces).count >= 2 else { results = []; return }
+        if let r = try? await api.pingRecipients(query: q) { results = r }
+    }
+    private func start() {
+        busy = true
+        Task {
+            do { onCreated(try await api.dmCreate(participantIDs: selected.map(\.id))); dismiss() }
+            catch { self.error = (error as? DcampAPI.APIError)?.message ?? error.localizedDescription; busy = false }
         }
     }
 }

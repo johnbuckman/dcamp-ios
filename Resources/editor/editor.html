@@ -110,6 +110,40 @@
   }
   editorEl.addEventListener("trix-change", runMarkdown);
 
+  // --- paste a bare URL → link to the page <title> (ported from dcamp.js) ---
+  function isBareUrl(s) { return /^https?:\/\/\S+$/i.test(s) && !/\s/.test(s) && s.length <= 2000; }
+  var pasteStart = null;
+  editorEl.addEventListener("paste", function () {
+    try { pasteStart = editorEl.editor.getSelectedRange()[0]; } catch (e) { pasteStart = null; }
+  }, true);
+  editorEl.addEventListener("trix-paste", function (e) {
+    var p = e.paste || {}, ed2 = editorEl.editor, start = pasteStart; pasteStart = null;
+    if (!ed2 || p.html || start == null) return;           // rich paste → leave to Trix
+    var s = (p.string || "").trim();
+    if (!isBareUrl(s)) return;
+    var end = ed2.getSelectedRange()[1];
+    if (end > start) {                                     // link the raw URL to itself at once
+      mdBusy = true;
+      try { ed2.setSelectedRange([start, end]); ed2.insertHTML('<a href="' + esc(s) + '">' + esc(s) + "</a>"); try { ed2.deactivateAttribute("href"); } catch (x) {} }
+      finally { mdBusy = false; }
+    }
+    post({ type: "urltitle", url: s });                    // Swift fetches the title, then swaps it in
+  });
+  // Swift calls this once url_title returns: swap the visible URL text for the page title.
+  window.dcampSwapUrlTitle = function (url, title) {
+    if (!title) return;
+    var ed2 = editorEl.editor; if (!ed2) return;
+    var full; try { full = ed2.getDocument().toString(); } catch (e) { return; }
+    var idx = full.indexOf(url); if (idx < 0) return;
+    mdBusy = true;
+    try {
+      ed2.setSelectedRange([idx, idx + url.length]);
+      ed2.insertHTML('<a href="' + esc(url) + '">' + esc(title) + "</a>");
+      var caret = idx + title.length; ed2.setSelectedRange([caret, caret]);
+      try { ed2.deactivateAttribute("href"); } catch (e) {}
+    } finally { mdBusy = false; }
+  };
+
   // Called by Swift after it uploads an image via the native API.
   window.dcampInsertImage = function (url) {
     var attachment = new Trix.Attachment({

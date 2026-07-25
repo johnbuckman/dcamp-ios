@@ -102,7 +102,7 @@ struct ThreadListView: View {
         } else {
             VStack(spacing: 0) {
                 ForEach(rows) { row in
-                    Button { path.append(.thread(row.id)) } label: { ThreadRowView(row: row) }
+                    Button { router.threadSiblings = rows.map(\.id); path.append(.thread(row.id)) } label: { ThreadRowView(row: row) }
                         .buttonStyle(.plain)
                     Divider().background(Color.dcLine)
                 }
