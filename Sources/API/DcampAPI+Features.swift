@@ -68,6 +68,17 @@ extension DcampAPI {
     }
     func bcUnlink() async { _ = try? await rawData("bc_unlink", [:]) }
 
+    /// Register + translate a batch of UI-chrome strings into `lang` (on-demand via the
+    /// server, then cached). Returns {english: translation}. English/empty → no-op.
+    func uiStrings(_ strings: [String], lang: String) async -> [String: String] {
+        struct R: Codable { var map: [String: String]? }
+        guard lang != "en", !lang.isEmpty,
+              let data = try? JSONSerialization.data(withJSONObject: strings),
+              let json = String(data: data, encoding: .utf8) else { return [:] }
+        let r: R? = try? await call("ui_strings", ["lang": lang, "strings": json])
+        return r?.map ?? [:]
+    }
+
     /// Fetch a pasted URL's page title (the browser can't read a cross-origin <title>).
     func urlTitle(_ url: String) async -> String {
         struct R: Codable { var title: String? }

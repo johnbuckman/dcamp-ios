@@ -54,7 +54,10 @@ final class UIStrings {
     var lang = "en"
 
     func load() async {
-        if let m = try? await DcampAPI.shared.uiMap() { map = m }
+        guard lang != "en", !lang.isEmpty else { map = [:]; return }
+        // Send the app's chrome-string catalog so the server registers + translates each
+        // into the viewer's language (on-demand, then cached). Falls back to English per string.
+        map = await DcampAPI.shared.uiStrings(UIStringCatalog.all, lang: lang)
     }
 
     /// Localize a UI string. Falls back to English when there's no translation
