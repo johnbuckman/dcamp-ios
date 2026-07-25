@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // Shared helpers ------------------------------------------------------------
 
@@ -69,7 +70,7 @@ final class ChatStore {
 
     func start() async {
         await reload()
-        realtime.start(interval: 6) { [weak self] in await self?.poll() }
+        realtime.start(interval: 3) { [weak self] in await self?.poll() }
     }
     func stop() { realtime.stop() }
     func reload() async {
@@ -78,11 +79,16 @@ final class ChatStore {
         }
     }
     private func poll() async {
-        guard let r = try? await api.chatLines(since: lastID) else { return }
-        let existing = Set(lines.map(\.id))
-        let new = r.lines.filter { !existing.contains($0.id) }
-        if !new.isEmpty { lines.append(contentsOf: new) }
-        lastID = r.lastId ?? lines.last?.id ?? lastID
+        // A streaming @derek/@deepseek line keeps growing under the SAME id. The old
+        // dedup-by-id append never updated it, so the partial line was frozen. Re-fetch
+        // from just before the lowest streaming id and MERGE by id (update + append).
+        let streamingMin = lines.filter { ($0.streaming ?? 0) != 0 }.map(\.id).min()
+        let since = streamingMin.map { $0 - 1 } ?? lastID
+        guard let r = try? await api.chatLines(since: since) else { return }
+        var byId = Dictionary(lines.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
+        for line in r.lines { byId[line.id] = line }
+        lines = byId.values.sorted { $0.id < $1.id }
+        lastID = max(lastID, r.lastId ?? lines.last?.id ?? lastID)
     }
     func send(html: String) async {
         guard !PlainText.strip(html).isEmpty else { return }
@@ -97,6 +103,10 @@ struct ChatView: View {
     @State private var editingLine: ChatLine?
     private let api = DcampAPI.shared
 
+    private func copyChatLink(_ id: Int) {
+        UIPasteboard.general.string = "https://decentespresso.com/support/dcamp/#/chat?m=\(id)"
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
@@ -105,20 +115,21 @@ struct ChatView: View {
                         SummarizeBar(kind: .chat).padding(.bottom, 4)
                         VStack(spacing: 0) {
                             ForEach(store.lines) { line in
-                                VStack(alignment: .leading, spacing: 6) {
-                                    HStack(alignment: .top) {
-                                        LineRow(author: line.author, html: line.html, createdAt: line.createdAt, translated: line.bodyTr)
-                                        if session.isAdmin {
-                                            Menu {
-                                                Button { editingLine = line } label: { Label("Edit", systemImage: "pencil") }
-                                                Button(role: .destructive) { Task { await api.chatDelete(id: line.id); await store.reload() } } label: { Label("Delete", systemImage: "trash") }
-                                            } label: { Image(systemName: "ellipsis").foregroundStyle(Color.dcMuted).padding(4) }
-                                        }
+                                // Chat lines have NO reactions on the web (boosts are messages/comments only).
+                                HStack(alignment: .top) {
+                                    LineRow(author: line.author, html: line.html, createdAt: line.createdAt, translated: line.bodyTr)
+                                    if session.isAdmin {
+                                        Menu {
+                                            Button { editingLine = line } label: { Label("Edit", systemImage: "pencil") }
+                                            Button(role: .destructive) { Task { await api.chatDelete(id: line.id); await store.reload() } } label: { Label("Delete", systemImage: "trash") }
+                                        } label: { Image(systemName: "ellipsis").foregroundStyle(Color.dcMuted).padding(4) }
                                     }
-                                    BoostBar(type: "chat", id: line.id, boosts: line.boosts ?? Boosts()) { await store.reload() }
-                                        .padding(.bottom, 8)
                                 }
+                                .padding(.bottom, 4)
                                 .id(line.id)
+                                .contextMenu {
+                                    Button { copyChatLink(line.id) } label: { Label("Link to this", systemImage: "link") }
+                                }
                                 Divider().background(Color.dcLine)
                             }
                         }
@@ -131,8 +142,17 @@ struct ChatView: View {
                     if let last = store.lines.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } }
                 }
             }
-            InlineComposer(placeholder: "Message the room… (rich text, @mention)") { html in
-                await store.send(html: html)
+            if session.canPost {
+                InlineComposer(placeholder: "Message the room… (rich text, @mention)", draftKey: "chat:main") { html in
+                    await store.send(html: html)
+                }
+            } else {
+                HStack(spacing: 8) {
+                    Image(systemName: "lock").foregroundStyle(Color.dcMuted)
+                    Text("You have read-only access — chat is for current Decent machine owners.")
+                        .font(.footnote).foregroundStyle(Color.dcMuted)
+                }
+                .padding(14).frame(maxWidth: .infinity, alignment: .leading).background(Color.dcBg)
             }
         }
         .background(Color.dcBg)
@@ -294,7 +314,7 @@ struct DMThreadView: View {
                 ScrollView {
                     LazyVStack(spacing: 10) {
                         ForEach(store.thread.messages) { m in
-                            DMBubble(message: m).id(m.id)
+                            DMBubble(message: m, showSender: store.thread.members.count > 2).id(m.id)
                         }
                     }
                     .padding(16)
@@ -304,7 +324,7 @@ struct DMThreadView: View {
                     if let last = store.thread.messages.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } }
                 }
             }
-            InlineComposer(placeholder: "Write a direct message… (rich text, @mention)") { html in
+            InlineComposer(placeholder: "Write a direct message… (rich text, @mention)", draftKey: "dm:\(convoID)") { html in
                 await store.send(html: html)
             }
         }
@@ -341,6 +361,7 @@ struct DMThreadView: View {
 /// dcamp web DM thread.
 struct DMBubble: View {
     let message: DMMessage
+    var showSender: Bool = false          // group conversations (>2 people)
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
@@ -356,8 +377,13 @@ struct DMBubble: View {
         }
     }
 
+    private var senderTint: Color { Color(hex: message.sender?.avatarColor) ?? Color.dcAccent }
+
     private var bubble: some View {
         VStack(alignment: .leading, spacing: 3) {
+            if showSender, !message.isMine, let name = message.sender?.name, !name.isEmpty {
+                Text(name).font(.system(size: 11, weight: .bold)).foregroundStyle(senderTint)
+            }
             TranslatableText(original: message.html, translated: message.bodyTr)
                 .font(.system(size: 15))
                 .foregroundStyle(message.isMine ? Color.white : Color.dcInk)
@@ -367,7 +393,7 @@ struct DMBubble: View {
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
         .background(
-            message.isMine ? Color.dcLink : Color(red: 0.94, green: 0.93, blue: 0.90),
+            message.isMine ? Color.dcLink : (showSender ? senderTint.opacity(0.14) : Color.dcBubbleOther),
             in: RoundedRectangle(cornerRadius: 16)
         )
     }

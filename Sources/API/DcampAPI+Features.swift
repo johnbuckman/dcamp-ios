@@ -21,6 +21,52 @@ extension DcampAPI {
     func chatSummary(days: Int, room: String = "main") async throws -> SummaryResult {
         try await call("chat_summary", ["days": String(days), "room": room])
     }
+    /// Multi-source digest used by the Summaries-by-email page.
+    func activitySummary(sources: String, period: String) async -> SummaryResult {
+        (try? await call("activity_summary", ["sources": sources, "period": period])) ?? SummaryResult()
+    }
+    func summaryEmailSample(sources: String, period: String) async {
+        _ = try? await rawData("summary_email_sample", ["sources": sources, "period": period])
+    }
+
+    // MARK: - AI pipeline (pre-post checks + Ask-Derek)
+
+    func subjectCheck(subject: String, body: String) async -> SubjectCheck {
+        (try? await call("subject_check", ["subject": subject, "body": body])) ?? SubjectCheck(verdict: "good")
+    }
+    func preAnswer(subject: String, body: String) async -> PreAnswer {
+        (try? await call("pre_answer", ["subject": subject, "body": body])) ?? PreAnswer()
+    }
+    func offtopicSuggest(commentID: Int) async -> OfftopicSuggest {
+        (try? await call("offtopic_suggest", ["id": String(commentID)])) ?? OfftopicSuggest()
+    }
+    func offtopicMove(commentID: Int) async -> CreateResult {
+        let r: CreateResult? = try? await call("offtopic_move", ["id": String(commentID)])
+        return r ?? CreateResult()
+    }
+    func derekSearchStart(_ query: String) async -> DerekStart {
+        (try? await call("derek_search_start", ["q": query])) ?? DerekStart()
+    }
+    func derekSearchPoll(token: String) async -> DerekPoll {
+        (try? await call("derek_search_poll", ["token": token])) ?? DerekPoll()
+    }
+
+    // MARK: - Streaming helpers
+
+    /// Re-fetch a single comment (used to grow a streaming @derek/@deepseek reply).
+    func commentOne(id: Int) async -> Comment? {
+        struct R: Codable { var comment: Comment? }
+        let r: R? = try? await call("comment_one", ["id": String(id)])
+        return r?.comment
+    }
+
+    // MARK: - Account
+
+    func emailChange(_ email: String) async -> Envelope {
+        let r: Envelope? = try? await call("email_change", ["email": email])
+        return r ?? Envelope()
+    }
+    func bcUnlink() async { _ = try? await rawData("bc_unlink", [:]) }
 
     // MARK: - Settings / account
 
@@ -32,8 +78,11 @@ extension DcampAPI {
     func locationSave(country: String, city: String) async {
         _ = try? await rawData("location_save", ["country": country, "city": city])
     }
-    func settingsSave(name: String, about: String, showLocation: Bool) async {
-        _ = try? await rawData("settings_save", ["name": name, "avatar_img": "", "about": about, "show_location": showLocation ? "1" : "0"])
+    /// avatarImg must be the member's CURRENT avatar URL — the server treats
+    /// avatar_img as an overwrite (the web sends ME.avatar_img), so passing "" here
+    /// blanked the avatar on every profile save.
+    func settingsSave(name: String, about: String, avatarImg: String, showLocation: Bool) async {
+        _ = try? await rawData("settings_save", ["name": name, "avatar_img": avatarImg, "about": about, "show_location": showLocation ? "1" : "0"])
     }
     func accountClose() async { _ = try? await rawData("account_close", [:]) }
     func uiPrefsSave(name: String, value: String) async {

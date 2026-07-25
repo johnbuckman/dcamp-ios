@@ -11,9 +11,37 @@ final class ComposerModel {
     var contentLength = 0
     var ready = false
     var mentionQuery: String?      // non-nil while typing "@query"
+    var submitRequested = 0        // bumped by ⌘↵ in the editor; observed by the host
+    var draftKey: String?          // e.g. "thread:123" — enables per-context draft persistence
     weak var webView: WKWebView?
 
     var isEmpty: Bool { contentLength == 0 }
+
+    // MARK: - Drafts (per-context, persisted in UserDefaults)
+
+    private func defaultsKey(_ k: String) -> String { "dcamp.draft.\(k)" }
+
+    /// Restore a saved draft into the editor (call once the editor is ready).
+    func loadDraft() {
+        guard let k = draftKey,
+              let saved = UserDefaults.standard.string(forKey: defaultsKey(k)),
+              !PlainText.strip(saved).isEmpty else { return }
+        loadHTML(saved)
+    }
+
+    /// Persist the current editor contents as this context's draft (or clear it if empty).
+    func saveDraft() async {
+        guard let k = draftKey else { return }
+        let current = await currentHTML()
+        if PlainText.strip(current).isEmpty { UserDefaults.standard.removeObject(forKey: defaultsKey(k)) }
+        else { UserDefaults.standard.set(current, forKey: defaultsKey(k)) }
+    }
+
+    /// Drop the saved draft (call after a successful post/send).
+    func clearDraft() {
+        guard let k = draftKey else { return }
+        UserDefaults.standard.removeObject(forKey: defaultsKey(k))
+    }
 
     func insertMention(id: Int, name: String) {
         webView?.evaluateJavaScript("dcampInsertMention(\(id), \(jsString(name)))")
@@ -72,6 +100,7 @@ final class ComposerModel {
 struct InlineComposer: View {
     var placeholder: String
     var model: ComposerModel = ComposerModel()
+    var draftKey: String? = nil          // enables per-context draft persistence
     var onSend: (String) async -> Void
 
     @State private var sending = false
@@ -86,14 +115,7 @@ struct InlineComposer: View {
                 .overlay(alignment: .top) { MentionOverlay(model: model).padding(.top, 52).padding(.horizontal, 8) }
             HStack {
                 Spacer()
-                Button("Send") {
-                    sending = true
-                    Task {
-                        let html = await model.currentHTML()
-                        if !PlainText.strip(html).isEmpty { await onSend(html); model.clear() }
-                        sending = false
-                    }
-                }
+                Button("Send") { send() }
                 .buttonStyle(DCPrimaryButtonStyle())
                 .disabled(sending)
                 .opacity(sending ? 0.5 : 1)
@@ -101,12 +123,33 @@ struct InlineComposer: View {
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
         .background(Color.dcBg)
+        .onChange(of: model.submitRequested) { _, _ in send() }   // ⌘↵ from the editor
+        .onDisappear { Task { await model.saveDraft() } }
         .task {
-            // Wait for the Trix editor to initialize, then apply our placeholder.
+            // Wait for the Trix editor to initialize, then apply placeholder + restore any draft.
             for _ in 0..<40 {
-                if model.ready { model.setPlaceholder(placeholder); break }
+                if model.ready {
+                    model.setPlaceholder(placeholder)
+                    model.draftKey = draftKey
+                    model.loadDraft()
+                    break
+                }
                 try? await Task.sleep(nanoseconds: 150_000_000)
             }
+        }
+    }
+
+    private func send() {
+        guard !sending else { return }
+        sending = true
+        Task {
+            let html = await model.currentHTML()
+            if !PlainText.strip(html).isEmpty {
+                await onSend(html)
+                model.clear()
+                model.clearDraft()
+            }
+            sending = false
         }
     }
 }
@@ -170,6 +213,7 @@ struct ComposerWebView: UIViewRepresentable {
         web.backgroundColor = .clear
         web.scrollView.keyboardDismissMode = .interactive
         model.webView = web
+        applyTheme(to: web)
 
         if let url = editorURL() {
             web.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
@@ -177,7 +221,17 @@ struct ComposerWebView: UIViewRepresentable {
         return web
     }
 
-    func updateUIView(_ uiView: WKWebView, context: Context) {}
+    func updateUIView(_ uiView: WKWebView, context: Context) { applyTheme(to: uiView) }
+
+    /// Keep the embedded Trix editor's light/dark appearance in sync with the app's
+    /// theme override (its CSS uses `color-scheme`/`canvas`, which follow this).
+    private func applyTheme(to web: WKWebView) {
+        switch ThemeMode(rawValue: UserDefaults.standard.string(forKey: "dcamp_theme") ?? "system") ?? .system {
+        case .light:  web.overrideUserInterfaceStyle = .light
+        case .dark:   web.overrideUserInterfaceStyle = .dark
+        case .system: web.overrideUserInterfaceStyle = .unspecified
+        }
+    }
 
     private func editorURL() -> URL? {
         Bundle.main.url(forResource: "editor", withExtension: "html", subdirectory: "editor")
@@ -199,6 +253,8 @@ struct ComposerWebView: UIViewRepresentable {
                 model.contentLength = body["length"] as? Int ?? 0
             case "mention":
                 model.mentionQuery = body["q"] as? String
+            case "submit":
+                model.submitRequested += 1
             default:
                 break
             }

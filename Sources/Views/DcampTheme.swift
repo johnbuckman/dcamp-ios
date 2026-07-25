@@ -1,18 +1,51 @@
 import SwiftUI
+import UIKit
 
-// Design tokens mirrored from dcamp's dcamp.css :root. The web app is light-only
-// and warm ("paper"), so we use fixed colors and force light appearance to match.
+/// Build a Color that resolves differently in light vs dark (matches dcamp.css's
+/// :root vs :root[data-theme=dark] palette).
+private func dcDynamic(_ light: (Double, Double, Double), _ dark: (Double, Double, Double)) -> Color {
+    Color(UIColor { tc in
+        let c = tc.userInterfaceStyle == .dark ? dark : light
+        return UIColor(red: c.0, green: c.1, blue: c.2, alpha: 1)
+    })
+}
+
+// Design tokens mirrored from dcamp's dcamp.css. Light is warm "paper"; the dark
+// palette mirrors :root[data-theme=dark] (warm-dark panels, softer accent #2c8a54).
 extension Color {
-    static let dcBg         = Color(red: 0.992, green: 0.976, blue: 0.953) // #fdf9f3 warm paper
-    static let dcPanel      = Color.white                                    // #ffffff
-    static let dcInk        = Color(red: 0.110, green: 0.110, blue: 0.110)  // #1c1c1c
-    static let dcInkSoft    = Color(red: 0.420, green: 0.420, blue: 0.420)  // #6b6b6b
-    static let dcMuted      = Color(red: 0.541, green: 0.522, blue: 0.475)  // #8a8579
-    static let dcLine       = Color(red: 0.925, green: 0.902, blue: 0.859)  // #ece6db
-    static let dcLineStrong = Color(red: 0.867, green: 0.835, blue: 0.780)  // #ddd5c7
-    static let dcAccent     = Color(red: 0.086, green: 0.639, blue: 0.290)  // #16a34a green
-    static let dcAccentInk  = Color(red: 0.059, green: 0.478, blue: 0.216)  // #0f7a37
-    static let dcLink       = Color(red: 0.122, green: 0.435, blue: 0.839)  // #1f6fd6
+    static let dcBg         = dcDynamic((0.992, 0.976, 0.953), (0.102, 0.090, 0.075)) // #fdf9f3 / #1a1712
+    static let dcPanel      = dcDynamic((1.000, 1.000, 1.000), (0.141, 0.125, 0.102)) // #ffffff / #24201a
+    static let dcInk        = dcDynamic((0.110, 0.110, 0.110), (0.949, 0.937, 0.914)) // #1c1c1c / #f2efe9
+    static let dcInkSoft    = dcDynamic((0.420, 0.420, 0.420), (0.722, 0.698, 0.659)) // #6b6b6b / #b8b2a8
+    static let dcMuted      = dcDynamic((0.541, 0.522, 0.475), (0.588, 0.561, 0.510)) // #8a8579 / #968f82
+    static let dcLine       = dcDynamic((0.925, 0.902, 0.859), (0.200, 0.184, 0.157)) // #ece6db / #332f28
+    static let dcLineStrong = dcDynamic((0.867, 0.835, 0.780), (0.278, 0.255, 0.216)) // #ddd5c7 / #474137
+    static let dcAccent     = dcDynamic((0.086, 0.639, 0.290), (0.173, 0.541, 0.329)) // #16a34a / #2c8a54
+    static let dcAccentInk  = dcDynamic((0.059, 0.478, 0.216), (0.376, 0.784, 0.529)) // #0f7a37 / #60c887
+    static let dcLink       = dcDynamic((0.122, 0.435, 0.839), (0.400, 0.639, 0.925)) // #1f6fd6 / #66a3ec
+    // Elements that always carry white text, so they must stay dark in BOTH modes:
+    static let dcDecentBg   = dcDynamic((0.110, 0.110, 0.110), (0.302, 0.278, 0.235)) // DECENT pill
+    // Others' DM bubble — light grey / warm dark-grey (dcInk text stays readable on both):
+    static let dcBubbleOther = dcDynamic((0.941, 0.929, 0.898), (0.216, 0.196, 0.165))
+}
+
+/// User-selectable appearance. Persisted locally in @AppStorage("dcamp_theme") and
+/// synced to the server as the web's `dcamp_theme` ui-pref ("" == system).
+enum ThemeMode: String, CaseIterable, Identifiable {
+    case system, light, dark
+    var id: String { rawValue }
+    var label: String {
+        switch self { case .system: return "System"; case .light: return "Light"; case .dark: return "Dark" }
+    }
+    var colorScheme: ColorScheme? {
+        switch self { case .system: return nil; case .light: return .light; case .dark: return .dark }
+    }
+    /// Value sent to `ui_prefs_save` (matches the web: empty string for system).
+    var serverValue: String { self == .system ? "" : rawValue }
+    /// Normalize a server/bootstrap value into a mode ("" / unknown → system).
+    static func from(_ raw: String?) -> ThemeMode {
+        switch raw { case "light": return .light; case "dark": return .dark; default: return .system }
+    }
 }
 
 enum DC {
@@ -99,7 +132,7 @@ struct DecentBadge: View {
                 .font(.system(size: 10, weight: .heavy)).tracking(0.6)
                 .foregroundStyle(.white)
                 .padding(.horizontal, 8).padding(.vertical, 1.5)
-                .background(Color.dcInk, in: Capsule())
+                .background(Color.dcDecentBg, in: Capsule())
         }
     }
 }

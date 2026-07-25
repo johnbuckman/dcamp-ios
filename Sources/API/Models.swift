@@ -19,6 +19,7 @@ struct Person: Codable, Identifiable, Hashable {
     var about: String?
     var isMember: Int?
     var machine: String?
+    var machineSku: String?
     var since: Int?
     var isDecent: Int?
     var isBot: Int?
@@ -77,12 +78,18 @@ struct Bootstrap: Codable {
     var memberCount: Int?
     var pingUnread: Int?
     var lang: String?
+    var dcampTheme: String?      // "light" | "dark" | "" (system) — synced with the web ui-pref
+    var myEmail: String?
+    var offtopicOn: Int?         // whether off-topic auto-split is enabled
+    var reopened: Int?           // account was reopened this session → toast
+    var status: String?          // account/status banner text
     var projects: [Board] = []
     var categories: [Category]?
 
     var admin: Bool { (isAdmin ?? 0) != 0 }
     var canPostBool: Bool { (canPost ?? 0) != 0 }
     var bcLinkedBool: Bool { (bcLinked ?? 0) != 0 }
+    var offtopicEnabled: Bool { (offtopicOn ?? 0) != 0 }
 }
 
 // MARK: - Threads / messages
@@ -103,9 +110,15 @@ struct MessageRow: Codable, Identifiable, Hashable {
     var lang: String?
     var author: Person?
     var preview: String?
+    var bodyTr: String?
+    var thumb: String?
+    var recentComment: String?
 
     var isPinned: Bool { (pinned ?? 0) != 0 }
     var displaySubject: String { (subjectTr?.isEmpty == false ? subjectTr! : subject) }
+    /// Body preview, translated when available.
+    var displayPreview: String { (bodyTr?.isEmpty == false ? bodyTr! : (preview ?? "")) }
+    var thumbURL: URL? { Person.absURL(thumb) }
 }
 
 struct MessagesPage: Codable {
@@ -157,6 +170,7 @@ struct Comment: Codable, Identifiable {
 struct MessageResponse: Codable {
     var ok: Bool?
     var projectName: String?
+    var lastVisit: Int?          // epoch of the viewer's previous visit → since-last-visit marker
     var message: MessageDetail
     var comments: [Comment]?
 }
@@ -201,9 +215,46 @@ struct Boosts: Codable {
 struct SummaryResult: Codable {
     var ok: Bool?
     var summary: String?       // HTML
+    var mine: String?          // "you were mentioned" HTML block (home summary)
     var cached: Bool?
     var hours: Int?
     var days: Int?
+}
+
+// MARK: - AI pipeline (subject check / pre-answer / off-topic / Ask-Derek)
+
+struct SubjectCheck: Codable {
+    var ok: Bool?
+    var verdict: String?       // "good" | "poor" | …
+    var suggestion: String?    // suggested clearer subject when not good
+    var isGood: Bool { (verdict ?? "good") == "good" }
+}
+
+struct PreAnswer: Codable {
+    var ok: Bool?
+    var answer: String?        // HTML answer from Derek, if any
+    var hasAnswer: Int?
+    var has: Bool { (hasAnswer ?? 0) != 0 || (answer?.isEmpty == false) }
+}
+
+struct OfftopicSuggest: Codable {
+    var ok: Bool?
+    var offtopic: Int?
+    var title: String?         // suggested new-thread title
+    var reason: String?
+    var suggested: Bool { (offtopic ?? 0) != 0 }
+}
+
+struct DerekStart: Codable {
+    var ok: Bool?
+    var token: String?
+}
+
+struct DerekPoll: Codable {
+    var ok: Bool?
+    var done: Int?
+    var answer: String?        // HTML answer once done
+    var isDone: Bool { (done ?? 0) != 0 }
 }
 
 struct SummaryInfo: Codable {
@@ -263,6 +314,7 @@ struct Notif: Codable, Identifiable {
         case "dm": return "sent you a message"
         case "comment_own": return "replied to your thread"
         case "comment_followed": return "commented on a thread you follow"
+        case "moved": return "moved your post to its own thread"
         default: return "new activity"
         }
     }
@@ -272,6 +324,7 @@ struct Notif: Codable, Identifiable {
         case "mention": return "at"
         case "dm": return "envelope"
         case "comment_own", "comment_followed": return "bubble.left"
+        case "moved": return "wrench.and.screwdriver"
         default: return "bell"
         }
     }
@@ -300,6 +353,25 @@ enum DcampRoute {
 
     static func personID(from route: String?) -> Int? {
         guard let route, let r = route.range(of: "/p/") else { return nil }
+        let digits = route[r.upperBound...].prefix { $0.isNumber }
+        return Int(digits)
+    }
+
+    /// DM conversation id from a "/dm/123" or "/pings/123" route.
+    static func dmID(from route: String?) -> Int? {
+        guard let route else { return nil }
+        for prefix in ["dm/", "pings/", "ping/"] {
+            if let r = route.range(of: prefix) {
+                let digits = route[r.upperBound...].prefix { $0.isNumber }
+                if let id = Int(digits) { return id }
+            }
+        }
+        return nil
+    }
+
+    /// Comment anchor from "?c=NN" in a route.
+    static func commentID(from route: String?) -> Int? {
+        guard let route, let r = route.range(of: "c=") else { return nil }
         let digits = route[r.upperBound...].prefix { $0.isNumber }
         return Int(digits)
     }
@@ -385,13 +457,36 @@ struct SearchHit: Codable {
     var snippet: String?
     var link: String?
     var createdAt: Int?
+    var author: Person?
+    var forum: String?
+    var forumId: Int?
+    var score: Double?
+    var untranslated: Int?
     var uid: String { "\(type ?? "")-\(id ?? 0)" }
+    var isUntranslated: Bool { (untranslated ?? 0) != 0 }
+    /// Human label for the hit type.
+    var typeLabel: String {
+        switch type {
+        case "message": return "Thread"
+        case "comment": return "Comment"
+        case "chat": return "Chat"
+        case "pings", "dm": return "DM"
+        default: return "Result"
+        }
+    }
+}
+
+struct SearchForum: Codable, Identifiable, Hashable {
+    let id: Int
+    var name: String = ""
 }
 
 struct SearchResponse: Codable {
     var ok: Bool?
     var results: [SearchHit] = []
     var people: [Person] = []
+    var forums: [SearchForum]? = []
+    var experts: [Int]? = []
 }
 
 // MARK: - Person profile

@@ -3,11 +3,12 @@ import SwiftUI
 /// Top-level gate: launching → login → main. Driven by `SessionStore.phase`.
 struct RootView: View {
     @Environment(SessionStore.self) private var session
+    @AppStorage("dcamp_theme") private var themeRaw = ThemeMode.system.rawValue
 
     var body: some View {
         content
             .tint(Color.dcAccent)
-            .preferredColorScheme(.light)   // dcamp web is light-only ("warm paper")
+            .preferredColorScheme(ThemeMode(rawValue: themeRaw)?.colorScheme)
     }
 
     @ViewBuilder private var content: some View {

@@ -18,11 +18,14 @@ struct SettingsView: View {
 
     @State private var summaryPeriod = "week"
     @State private var summaryEmail = false
+    @State private var summarySources = ""   // round-tripped; source picker lives on the web Summaries page
 
     @State private var muted: [Person] = []
     @State private var loaded = false
     @State private var savingProfile = false
     @State private var showClose = false
+    @State private var showHelp = false
+    @AppStorage("dcamp_theme") private var themeRaw = ThemeMode.system.rawValue
 
     private let api = DcampAPI.shared
     private let kinds: [(String, String)] = [
@@ -34,6 +37,7 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 profileSection
+                appearanceSection
                 locationSection
                 notifSection
                 summarySection
@@ -51,6 +55,7 @@ struct SettingsView: View {
                 Button("Close account", role: .destructive) { Task { await api.accountClose(); await session.logout(); dismiss() } }
                 Button("Cancel", role: .cancel) {}
             } message: { Text("Your posts stay, but you’re removed from search, @mention and the member list. Logging in again reopens it.") }
+            .sheet(isPresented: $showHelp) { HelpView() }
         }
     }
 
@@ -60,9 +65,22 @@ struct SettingsView: View {
             TextField("About you", text: $about, axis: .vertical).lineLimit(2...4)
             Button {
                 savingProfile = true
-                Task { await api.settingsSave(name: name, about: about, showLocation: showLocation); await session.refresh(); savingProfile = false }
+                Task { await api.settingsSave(name: name, about: about, avatarImg: session.me?.avatarImg ?? "", showLocation: showLocation); await session.refresh(); savingProfile = false }
             } label: {
                 HStack { if savingProfile { ProgressView() }; Text("Save profile") }
+            }
+        }
+    }
+
+    private var appearanceSection: some View {
+        Section("Appearance") {
+            Picker("Theme", selection: $themeRaw) {
+                ForEach(ThemeMode.allCases) { m in Text(m.label).tag(m.rawValue) }
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: themeRaw) { _, v in
+                // Sync to the server so the web and other devices match (web ui-pref "dcamp_theme").
+                Task { await api.uiPrefsSave(name: "dcamp_theme", value: ThemeMode(rawValue: v)?.serverValue ?? "") }
             }
         }
     }
@@ -72,7 +90,7 @@ struct SettingsView: View {
             HStack { Text("City"); Spacer(); TextField("City", text: $city).multilineTextAlignment(.trailing) }
             HStack { Text("Country"); Spacer(); TextField("US", text: $country).multilineTextAlignment(.trailing).frame(width: 80) }
             Toggle("Show my city & country on my profile", isOn: $showLocation)
-            Button("Save location") { Task { await api.locationSave(country: country, city: city); await api.settingsSave(name: name, about: about, showLocation: showLocation) } }
+            Button("Save location") { Task { await api.locationSave(country: country, city: city); await api.settingsSave(name: name, about: about, avatarImg: session.me?.avatarImg ?? "", showLocation: showLocation) } }
         }
     }
 
@@ -109,7 +127,10 @@ struct SettingsView: View {
             }
             Toggle("Email me summaries", isOn: $summaryEmail)
             Button("Save summary settings") {
-                Task { await api.summaryPrefsSave(sources: "", period: summaryPeriod, emailEnabled: summaryEmail) }
+                Task { await api.summaryPrefsSave(sources: summarySources, period: summaryPeriod, emailEnabled: summaryEmail) }
+            }
+            NavigationLink { EmailSummariesView().environment(session) } label: {
+                Label("Manage sources & email a sample", systemImage: "slider.horizontal.3")
             }
         }
     }
@@ -140,6 +161,7 @@ struct SettingsView: View {
 
     private var accountSection: some View {
         Section {
+            Button { showHelp = true } label: { Label("Help", systemImage: "questionmark.circle") }
             if let me = session.me { LabeledContent("dcamp id", value: "\(me.id)") }
             Button(role: .destructive) { showClose = true } label: { Text("Close account") }
             Button(role: .destructive) { Task { await session.logout(); dismiss() } } label: {
@@ -158,6 +180,7 @@ struct SettingsView: View {
         popup = Set(prefs.popup); email = Set(prefs.email)
         let sp = await api.summaryPrefsGet()
         summaryPeriod = sp.period ?? "week"; summaryEmail = (sp.emailEnabled ?? 0) != 0
+        summarySources = sp.sources ?? ""
         muted = await api.personMutes()
         loaded = true
     }

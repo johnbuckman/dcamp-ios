@@ -20,6 +20,9 @@ struct MainView: View {
     @State private var showAccount = false
     @State private var showNotifs = false
     @State private var notifStore = NotificationsStore()
+    @State private var toastNotif: Notif?
+    @State private var lastNotifCount = -1
+    @State private var showHelp = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -30,6 +33,23 @@ struct MainView: View {
             stack
         }
         .tint(Color.dcAccent)
+        .overlay(alignment: .top) {
+            if let n = toastNotif {
+                NotifToast(notif: n) { openNotif(n) }
+                    .padding(.horizontal, 12).padding(.top, 4)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(duration: 0.3), value: toastNotif?.id)
+        .onChange(of: notifStore.items.count) { _, new in
+            // Toast the newest notification when the unread list grows mid-session.
+            if lastNotifCount >= 0, new > lastNotifCount, let newest = notifStore.items.max(by: { $0.id < $1.id }) {
+                toastNotif = newest
+                let id = newest.id
+                Task { try? await Task.sleep(nanoseconds: 4_000_000_000); if toastNotif?.id == id { toastNotif = nil } }
+            }
+            lastNotifCount = new
+        }
         .sheet(isPresented: $showAccount) { SettingsView().environment(session).environment(router) }
         .sheet(isPresented: $showNotifs) {
             NotificationsView(store: notifStore) { router.threadID = $0 }
@@ -38,11 +58,15 @@ struct MainView: View {
         .sheet(item: personSheet) { ref in
             PersonCardView(personID: ref.id).environment(session).environment(router)
         }
+        .sheet(isPresented: $showHelp) { HelpView() }
         .task { await startLive() }
         .onChange(of: router.threadID) { _, id in if let id { path.append(.thread(id)); router.threadID = nil } }
         .onChange(of: router.dmID) { _, id in if let id { path.append(.dm(id)); router.dmID = nil } }
         .onReceive(NotificationCenter.default.publisher(for: .dcampOpenRoute)) { note in
-            if let id = DcampRoute.messageID(from: note.userInfo?["route"] as? String) { path.append(.thread(id)) }
+            let route = note.userInfo?["route"] as? String
+            if let id = DcampRoute.messageID(from: route) { path.append(.thread(id)) }
+            else if let id = DcampRoute.dmID(from: route) { path.append(.dm(id)) }
+            else if let id = DcampRoute.personID(from: route) { router.personID = id }
         }
         .onReceive(NotificationCenter.default.publisher(for: .dcampPushTokenReady)) { _ in
             Task { await PushManager.shared.registerToken() }
@@ -78,6 +102,14 @@ struct MainView: View {
         Binding(get: { router.personID.map(PersonRef.init) }, set: { router.personID = $0?.id })
     }
 
+    private func openNotif(_ n: Notif) {
+        toastNotif = nil
+        if let id = DcampRoute.messageID(from: n.route) { path.append(.thread(id)) }
+        else if let id = DcampRoute.dmID(from: n.route) { path.append(.dm(id)) }
+        else if let id = DcampRoute.personID(from: n.route) { router.personID = id }
+        Task { await notifStore.markSeen([n.id]) }
+    }
+
     private func startLive() async {
         strings.lang = session.lang
         await strings.load()
@@ -90,12 +122,15 @@ struct MainView: View {
         if let screen = env["DCAMP_SHOT_SCREEN"] {
             switch screen {
             case "board": path = [.board(1)]
+            case "problems": path = [.board(4)]
             case "thread": path = [.thread(11670)]
             case "shortthread": path = [.thread(230)]
             case "chat": path = [.chat]
             case "dms": path = [.dms]
             case "dm": path = [.dm(125)]
+            case "search": path = [.search]
             case "settings": showAccount = true
+            case "help": showHelp = true
             case "ipadsummary": summaryPin.kind = .home; summaryPin.title = "Diaspora summary"
             default: break
             }
@@ -106,6 +141,8 @@ struct MainView: View {
         if let route = PushManager.shared.pendingRoute {
             PushManager.shared.pendingRoute = nil
             if let id = DcampRoute.messageID(from: route) { path.append(.thread(id)) }
+            else if let id = DcampRoute.dmID(from: route) { path.append(.dm(id)) }
+            else if let id = DcampRoute.personID(from: route) { router.personID = id }
         }
         await PushManager.shared.enablePush()
     }
@@ -263,6 +300,33 @@ struct OtherCard: View {
         }
         .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
         .dcCard()
+    }
+}
+
+// MARK: - Foreground notification toast
+
+struct NotifToast: View {
+    let notif: Notif
+    var onTap: () -> Void
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 10) {
+                if notif.actor != nil { Avatar(person: notif.actor, size: 32) }
+                else { Image(systemName: notif.icon).foregroundStyle(Color.dcAccent).frame(width: 32) }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(notif.actor?.name ?? "dcamp").font(.system(size: 14, weight: .bold)).foregroundStyle(Color.dcInk)
+                    Text(notif.kindLabel).font(.system(size: 13)).foregroundStyle(Color.dcInkSoft).lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.caption).foregroundStyle(Color.dcMuted)
+            }
+            .padding(12)
+            .frame(maxWidth: 520)
+            .background(Color.dcPanel, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.dcLine, lineWidth: 1))
+            .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
+        }
+        .buttonStyle(.plain)
     }
 }
 

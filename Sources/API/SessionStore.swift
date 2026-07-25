@@ -132,6 +132,10 @@ final class SessionStore {
             showRoasters = (b.showRoasters ?? 0) != 0
             pingUnread = b.pingUnread ?? 0
             lang = b.lang ?? "en"
+            // Adopt the member's server-stored appearance on login (cross-device sync).
+            if initial, let t = b.dcampTheme {
+                UserDefaults.standard.set(ThemeMode.from(t).rawValue, forKey: "dcamp_theme")
+            }
             phase = .loggedIn
         } catch {
             // A stale/invalid token on launch → fall back to the login screen.
@@ -149,10 +153,18 @@ final class SessionStore {
     }
 
     func logout() async {
+        // Detach this device from push + clear the badge BEFORE dropping the token,
+        // so the server stops delivering notifications to a signed-out device.
+        await PushManager.shared.unregisterToken()
+        await PushManager.shared.clearBadge()
         await api.logout()
         me = nil
         boards = []
         categories = []
+        canPost = false
+        isAdmin = false
+        bcLinked = false
+        pingUnread = 0
         phase = .loggedOut
     }
 }

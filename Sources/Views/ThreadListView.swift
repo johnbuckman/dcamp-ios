@@ -12,11 +12,17 @@ struct ThreadListView: View {
     @State private var total = 0
     @State private var loading = false
     @State private var filter: Filter = .all
+    @State private var statusFilter: ProblemStatus = .unsolved
     @State private var composing = false
 
     private let api = DcampAPI.shared
 
     enum Filter: String { case all, popular, posted, commented, mentioned }
+    enum ProblemStatus: String, CaseIterable { case unsolved, solved, notaproblem, all
+        var label: String { switch self { case .unsolved: return "Unsolved"; case .solved: return "Solved"; case .notaproblem: return "Closed"; case .all: return "All" } }
+    }
+
+    private var isProblems: Bool { board.name == "Problems" }
 
     var body: some View {
         ScrollView {
@@ -61,14 +67,31 @@ struct ThreadListView: View {
     }
 
     private var filterBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                DCFilterPill(icon: "flame", title: "Popular", active: filter == .popular) { toggle(.popular) }
-                DCFilterPill(icon: "square.and.pencil", title: "I posted", active: filter == .posted) { toggle(.posted) }
-                DCFilterPill(icon: "bubble.left", title: "I commented", active: filter == .commented) { toggle(.commented) }
-                DCFilterPill(icon: "at", title: "I'm mentioned", active: filter == .mentioned) { toggle(.mentioned) }
+        VStack(alignment: .leading, spacing: 8) {
+            if isProblems {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(ProblemStatus.allCases, id: \.self) { s in
+                            DCFilterPill(icon: statusIcon(s), title: s.label, active: statusFilter == s) {
+                                statusFilter = s; Task { await load(reset: true) }
+                            }
+                        }
+                    }
+                }
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    DCFilterPill(icon: "flame", title: "Popular", active: filter == .popular) { toggle(.popular) }
+                    DCFilterPill(icon: "square.and.pencil", title: "I posted", active: filter == .posted) { toggle(.posted) }
+                    DCFilterPill(icon: "bubble.left", title: "I commented", active: filter == .commented) { toggle(.commented) }
+                    DCFilterPill(icon: "at", title: "I'm mentioned", active: filter == .mentioned) { toggle(.mentioned) }
+                }
             }
         }
+    }
+
+    private func statusIcon(_ s: ProblemStatus) -> String {
+        switch s { case .unsolved: return "circle.dashed"; case .solved: return "checkmark.circle"; case .notaproblem: return "xmark.circle"; case .all: return "circle.grid.2x2" }
     }
 
     @ViewBuilder private var threadRows: some View {
@@ -108,6 +131,7 @@ struct ThreadListView: View {
         case .mentioned: params["mine"] = "mentioned"
         case .all: break
         }
+        if isProblems && statusFilter != .all { params["status"] = statusFilter.rawValue }
         if let page: MessagesPage = try? await api.call("messages", params) {
             if reset { rows = page.messages } else { rows.append(contentsOf: page.messages) }
             total = page.total ?? rows.count
@@ -121,21 +145,33 @@ struct ThreadRowView: View {
     let row: MessageRow
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                if row.isPinned { Image(systemName: "pin.fill").font(.caption2).foregroundStyle(.orange) }
-                Text(row.displaySubject).font(.system(size: 18, weight: .bold)).foregroundStyle(Color.dcInk)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let cat = row.categoryName, !cat.isEmpty { CategoryPill(name: cat, emoji: row.categoryEmoji) }
+        HStack(alignment: .top, spacing: 12) {
+            if let url = row.thumbURL {
+                AsyncImage(url: url) { img in img.resizable().aspectRatio(contentMode: .fill) }
+                    placeholder: { Color.dcLine }
+                    .frame(width: 52, height: 52)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
             }
-            if let preview = row.preview, !preview.isEmpty {
-                Text(preview).font(.system(size: 15)).foregroundStyle(Color.dcInkSoft).lineLimit(1)
-            }
-            HStack(spacing: 8) {
-                AuthorLine(person: row.author, date: row.createdAt)
-                if let n = row.commentCount, n > 0 {
-                    Text("·").foregroundStyle(Color.dcMuted)
-                    Label("\(n)", systemImage: "bubble.right").font(.system(size: 13)).foregroundStyle(Color.dcMuted)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    if row.isPinned { Image(systemName: "pin.fill").font(.caption2).foregroundStyle(.orange) }
+                    Text(row.displaySubject).font(.system(size: 18, weight: .bold)).foregroundStyle(Color.dcInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let cat = row.categoryName, !cat.isEmpty { CategoryPill(name: cat, emoji: row.categoryEmoji) }
+                }
+                if !row.displayPreview.isEmpty {
+                    Text(row.displayPreview).font(.system(size: 15)).foregroundStyle(Color.dcInkSoft).lineLimit(1)
+                }
+                if let rc = row.recentComment, !PlainText.strip(rc).isEmpty {
+                    Label(PlainText.strip(rc), systemImage: "arrowshape.turn.up.left")
+                        .font(.system(size: 13)).foregroundStyle(Color.dcMuted).lineLimit(1)
+                }
+                HStack(spacing: 8) {
+                    AuthorLine(person: row.author, date: row.createdAt)
+                    if let n = row.commentCount, n > 0 {
+                        Text("·").foregroundStyle(Color.dcMuted)
+                        Label("\(n)", systemImage: "bubble.right").font(.system(size: 13)).foregroundStyle(Color.dcMuted)
+                    }
                 }
             }
         }

@@ -18,7 +18,8 @@ struct BoostBar: View {
                 Button { toggle(b.content) } label: {
                     HStack(spacing: 3) {
                         Text(b.display).font(.system(size: 14))
-                        if b.count > 1 { Text("\(b.count)").font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.dcInkSoft) }
+                        // Web always renders the count (<span class="n">) — show it even at 1.
+                        Text("\(b.count)").font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.dcInkSoft)
                     }
                     .padding(.horizontal, 8).padding(.vertical, 3)
                     .background(b.content == boosts.mine ? Color.dcAccent.opacity(0.15) : Color.dcPanel, in: Capsule())

@@ -37,6 +37,79 @@
   });
   editorEl.addEventListener("trix-initialize", function () { post({ type: "ready" }); });
 
+  // ⌘↵ / Ctrl+↵ submits (matches the web's bindCmdEnter).
+  editorEl.addEventListener("keydown", function (e) {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); post({ type: "submit" }); }
+  });
+
+  function esc(s) {
+    return (s == null ? "" : String(s)).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+
+  // --- markdown auto-format as you type (ported from dcamp.js attachMarkdown) ---
+  // When the user completes a markdown pattern, swap the raw markdown for real
+  // rich-text formatting in place. Block markers fire on the trailing space;
+  // inline markers fire on the closing delimiter.
+  var mdBusy = false;
+  var INLINE = [
+    { re: /\*\*([^*\n]+)\*\*$/, attr: "bold", d: 2 },
+    { re: /__([^_\n]+)__$/, attr: "bold", d: 2 },
+    { re: /~~([^~\n]+)~~$/, attr: "strike", d: 2 },
+    { re: /(?:^|[^*\w])\*([^*\n]+)\*$/, attr: "italic", d: 1, g: 1 },
+    { re: /(?:^|[^_\w])_([^_\n]+)_$/, attr: "italic", d: 1, g: 1 }
+  ];
+  function runMarkdown() {
+    var ed2 = editorEl.editor; if (!ed2 || mdBusy) return;
+    var r = ed2.getSelectedRange(); if (r[0] !== r[1]) return;   // collapsed caret only
+    var caret = r[1];
+    var before = ed2.getDocument().toString().slice(0, caret);
+    var line = before.slice(before.lastIndexOf("\n") + 1);
+    // ``` on its own line → code block (Trix has no inline code).
+    if (line === "```" && !ed2.attributeIsActive("code")) {
+      mdBusy = true;
+      try { ed2.setSelectedRange([caret - 3, caret]); ed2.deleteInDirection("backward"); ed2.activateAttribute("code"); }
+      finally { mdBusy = false; }
+      return;
+    }
+    var blk = /^#{1,3}\s$/.test(line) ? "heading1"
+      : /^[-*]\s$/.test(line) ? "bullet"
+      : /^\d+\.\s$/.test(line) ? "number"
+      : /^>\s$/.test(line) ? "quote" : null;
+    if (blk) {
+      var ls = caret - line.length;
+      mdBusy = true;
+      try { ed2.setSelectedRange([ls, caret]); ed2.deleteInDirection("backward"); ed2.activateAttribute(blk); }
+      finally { mdBusy = false; }
+      return;
+    }
+    for (var i = 0; i < INLINE.length; i++) {
+      var m = before.match(INLINE[i].re); if (!m) continue;
+      var inner = INLINE[i].g ? m[INLINE[i].g] : m[1];
+      var s = caret - (inner.length + 2 * INLINE[i].d);
+      var attr = INLINE[i].attr;
+      mdBusy = true;
+      try {
+        ed2.setSelectedRange([s, caret]); ed2.insertString(inner);
+        ed2.setSelectedRange([s, s + inner.length]); ed2.activateAttribute(attr);
+        ed2.setSelectedRange([s + inner.length, s + inner.length]); ed2.deactivateAttribute(attr);
+      } finally { mdBusy = false; }
+      return;
+    }
+    var lm = before.match(/\[([^\]\n]+)\]\(([^)\s]+)\)$/);
+    if (lm) {
+      var s2 = caret - lm[0].length;
+      mdBusy = true;
+      try {
+        ed2.setSelectedRange([s2, caret]);
+        ed2.insertHTML('<a href="' + esc(lm[2]) + '">' + esc(lm[1]) + "</a>");
+        try { ed2.deactivateAttribute("href"); } catch (e) {}
+      } finally { mdBusy = false; }
+    }
+  }
+  editorEl.addEventListener("trix-change", runMarkdown);
+
   // Called by Swift after it uploads an image via the native API.
   window.dcampInsertImage = function (url) {
     var attachment = new Trix.Attachment({

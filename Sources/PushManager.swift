@@ -53,6 +53,21 @@ final class PushManager {
         await DcampAPI.shared.pushRegister(token: token, platform: "apns")
     }
 
+    /// Detach this device from the account on sign-out so the server stops pushing
+    /// to it, and clear the app-icon badge. No-ops without a token / without grant.
+    @MainActor
+    func unregisterToken() async {
+        guard let token = deviceToken else { return }
+        await DcampAPI.shared.pushUnregister(token: token)
+    }
+
+    @MainActor
+    func clearBadge() async {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        guard settings.authorizationStatus == .authorized else { return }
+        try? await UNUserNotificationCenter.current().setBadgeCount(0)
+    }
+
     /// Extracts a dcamp hash-route from a push payload, supporting either a top-level
     /// `route` key or a custom `dcamp.route` object.
     static func route(from payload: [AnyHashable: Any]) -> String? {
