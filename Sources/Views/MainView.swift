@@ -197,7 +197,7 @@ struct ForumsHomeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Forums").font(.system(size: 32, weight: .heavy)).foregroundStyle(Color.dcInk)
+                    Text(T("Forums")).font(.system(size: 32, weight: .heavy)).foregroundStyle(Color.dcInk)
                     Text("Forums: \(session.boards.count)").font(.system(size: 15)).foregroundStyle(Color.dcMuted)
                 }
 
@@ -344,18 +344,18 @@ struct AccountSheet: View {
                         Avatar(person: session.me, size: 52)
                         VStack(alignment: .leading) {
                             Text(session.me?.name ?? "—").font(.headline)
-                            if session.isAdmin { Text("Admin").font(.caption).foregroundStyle(.secondary) }
+                            if session.isAdmin { Text(T("Admin")).font(.caption).foregroundStyle(.secondary) }
                         }
                     }.padding(.vertical, 4)
                 }
                 Section {
                     Button(role: .destructive) { Task { await session.logout(); dismiss() } } label: {
-                        Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
+                        Label(T("Sign out"), systemImage: "rectangle.portrait.and.arrow.right")
                     }
                 }
             }
-            .navigationTitle("Account").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
+            .navigationTitle(T("Account")).navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(T("Done")) { dismiss() } } }
         }
     }
 }

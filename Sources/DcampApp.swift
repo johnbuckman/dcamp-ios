@@ -5,7 +5,7 @@ struct DcampApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var session = SessionStore()
     @State private var router = Router()
-    @State private var strings = UIStrings()
+    private let strings = UIStrings.shared
     @State private var summaryPin = SummaryPin()
 
     var body: some Scene {

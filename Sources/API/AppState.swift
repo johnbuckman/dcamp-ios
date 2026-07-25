@@ -46,6 +46,10 @@ enum SummaryKind: Equatable {
 @MainActor
 @Observable
 final class UIStrings {
+    /// Shared instance — injected into the environment (for reactive views) AND read by
+    /// the global `T(_:)` helper, so the two never diverge.
+    static let shared = UIStrings()
+
     private var map: [String: String] = [:]
     var lang = "en"
 
@@ -60,6 +64,10 @@ final class UIStrings {
         return map[english] ?? english
     }
 }
+
+/// Localize a UI-chrome string literal. Use in view bodies: `Text(T("Forums"))`.
+/// Reads the shared UIStrings; falls back to English until the server ui_map backfill runs.
+@MainActor func T(_ english: String) -> String { UIStrings.shared.t(english) }
 
 /// The languages dcamp supports (matches the server's dcamp_all_langs).
 struct AppLanguage: Identifiable, Hashable {

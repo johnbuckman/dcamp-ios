@@ -13,14 +13,14 @@ struct LoginView: View {
             VStack(spacing: 24) {
                 HStack(spacing: 9) {
                     Image(systemName: "cup.and.saucer.fill").font(.system(size: 22)).foregroundStyle(Color.dcInk)
-                    Text("dcamp").font(.system(size: 22, weight: .heavy)).foregroundStyle(Color.dcInk)
+                    Text(T("dcamp")).font(.system(size: 22, weight: .heavy)).foregroundStyle(Color.dcInk)
                 }
 
                 VStack(spacing: 6) {
-                    Text("Welcome to the Decent Diaspora")
+                    Text(T("Welcome to the Decent Diaspora"))
                         .font(.system(size: 22, weight: .heavy)).foregroundStyle(Color.dcInk)
                         .multilineTextAlignment(.center)
-                    Text("Sign in with your existing Decent support account.")
+                    Text(T("Sign in with your existing Decent support account."))
                         .font(.system(size: 15)).foregroundStyle(Color.dcInkSoft)
                         .multilineTextAlignment(.center)
                 }
@@ -43,7 +43,7 @@ struct LoginView: View {
                     .buttonStyle(DCPrimaryButtonStyle())
                     .disabled(session.loggingIn)
 
-                    Text("Opens a secure browser. Your password is never entered in the app.")
+                    Text(T("Opens a secure browser. Your password is never entered in the app."))
                         .font(.system(size: 12)).foregroundStyle(Color.dcMuted)
                         .multilineTextAlignment(.center)
                 }

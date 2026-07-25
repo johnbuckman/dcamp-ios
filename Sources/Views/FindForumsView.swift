@@ -13,12 +13,12 @@ struct FindForumsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Text("Find forums").font(.system(size: 28, weight: .heavy)).foregroundStyle(Color.dcInk)
+                Text(T("Find forums")).font(.system(size: 28, weight: .heavy)).foregroundStyle(Color.dcInk)
                 if session.showRegions { section("Regional forums", regions, kind: "region") }
                 if session.showRoasters { section("Roaster forums", roasters, kind: "roaster") }
                 if !loading && regions.isEmpty && roasters.isEmpty {
-                    ContentUnavailableView("Nothing to discover", systemImage: "map",
-                                           description: Text("No regional or roaster forums are available yet."))
+                    ContentUnavailableView(T("Nothing to discover"), systemImage: "map",
+                                           description: Text(T("No regional or roaster forums are available yet.")))
                         .padding(.top, 30)
                 }
             }
@@ -26,7 +26,7 @@ struct FindForumsView: View {
         }
         .background(Color.dcBg)
         .scrollContentBackground(.hidden)
-        .navigationTitle("Find forums").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(T("Find forums")).navigationBarTitleDisplayMode(.inline)
         .task { await load() }
     }
 
@@ -43,7 +43,7 @@ struct FindForumsView: View {
                             }
                         }
                         Spacer()
-                        Button(b.isJoined ? "Leave" : "Join") { toggle(b, kind: kind) }
+                        Button(b.isJoined ? T("Leave") : T("Join")) { toggle(b, kind: kind) }
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(b.isJoined ? Color.dcMuted : Color.dcAccentInk)
                     }

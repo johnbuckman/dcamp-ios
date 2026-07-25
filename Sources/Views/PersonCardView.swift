@@ -19,7 +19,7 @@ struct PersonCardView: View {
                         Section { header(card) }
                         Section { actionButtons(card) }
                         if !card.messages.isEmpty {
-                            Section("Threads") {
+                            Section(T("Threads")) {
                                 ForEach(card.messages) { m in
                                     Button { open(messageID: m.id) } label: {
                                         activityRow(m.subject ?? "Thread", m.createdAt)
@@ -28,7 +28,7 @@ struct PersonCardView: View {
                             }
                         }
                         if !card.comments.isEmpty {
-                            Section("Comments") {
+                            Section(T("Comments")) {
                                 ForEach(card.comments) { c in
                                     Button { open(messageID: c.messageId ?? c.id) } label: {
                                         activityRow(c.messageSubject ?? PlainText.strip(c.body ?? "Comment"), c.createdAt)
@@ -40,12 +40,12 @@ struct PersonCardView: View {
                 } else if loading {
                     ProgressView()
                 } else {
-                    ContentUnavailableView("Couldn’t load profile", systemImage: "person.slash")
+                    ContentUnavailableView(T("Couldn’t load profile"), systemImage: "person.slash")
                 }
             }
             .navigationTitle(card?.person.name ?? "Profile")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(T("Done")) { dismiss() } } }
         }
         .task { await load() }
     }
@@ -61,7 +61,7 @@ struct PersonCardView: View {
                     dismiss(); router.dmID = convo
                 }
             }
-        } label: { Label("Message", systemImage: "envelope") }
+        } label: { Label(T("Message"), systemImage: "envelope") }
 
         Button {
             Task {
@@ -70,14 +70,14 @@ struct PersonCardView: View {
             }
         } label: { Label(muted ? "Unmute" : "Mute", systemImage: muted ? "speaker.wave.2" : "speaker.slash") }
 
-        Button(role: .destructive) { reporting = true } label: { Label("Report", systemImage: "flag") }
+        Button(role: .destructive) { reporting = true } label: { Label(T("Report"), systemImage: "flag") }
             .alert("Report \(card.person.name)?", isPresented: $reporting) {
-                TextField("Reason", text: $reportReason)
-                Button("Report", role: .destructive) {
+                TextField(T("Reason"), text: $reportReason)
+                Button(T("Report"), role: .destructive) {
                     Task { await api.reportPerson(id: card.person.id, reason: reportReason, url: "app://person/\(card.person.id)"); reportReason = "" }
                 }
-                Button("Cancel", role: .cancel) { reportReason = "" }
-            } message: { Text("This alerts the moderators.") }
+                Button(T("Cancel"), role: .cancel) { reportReason = "" }
+            } message: { Text(T("This alerts the moderators.")) }
     }
 
     private func header(_ card: PersonCard) -> some View {

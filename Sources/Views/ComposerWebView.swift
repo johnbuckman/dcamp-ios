@@ -132,7 +132,7 @@ struct InlineComposer: View {
                 Button { model.insertHR() } label: { Image(systemName: "minus").font(.system(size: 16, weight: .bold)) }
                     .foregroundStyle(Color.dcMuted)
                 Spacer()
-                Button("Send") { send() }
+                Button(T("Send")) { send() }
                 .buttonStyle(DCPrimaryButtonStyle())
                 .disabled(sending)
                 .opacity(sending ? 0.5 : 1)
@@ -183,11 +183,11 @@ struct ComposerColorButton: View {
             .foregroundStyle(Color.dcMuted)
             .popover(isPresented: $show) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Text colour").font(.caption.bold()).foregroundStyle(Color.dcMuted)
+                    Text(T("Text colour")).font(.caption.bold()).foregroundStyle(Color.dcMuted)
                     HStack(spacing: 10) { ForEach(fg, id: \.0) { hex, c in swatch(c) { model.setColor(fg: hex, bg: nil); show = false } } }
-                    Text("Highlight").font(.caption.bold()).foregroundStyle(Color.dcMuted)
+                    Text(T("Highlight")).font(.caption.bold()).foregroundStyle(Color.dcMuted)
                     HStack(spacing: 10) { ForEach(bg, id: \.0) { hex, c in swatch(c) { model.setColor(fg: nil, bg: hex); show = false } } }
-                    Button("Clear") { model.clearColor(); show = false }.font(.footnote).padding(.top, 2)
+                    Button(T("Clear")) { model.clearColor(); show = false }.font(.footnote).padding(.top, 2)
                 }
                 .padding(16)
                 .presentationCompactAdaptation(.popover)

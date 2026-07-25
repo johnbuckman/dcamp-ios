@@ -47,14 +47,14 @@ struct ComposeView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 if isNewThread {
-                    TextField("Subject", text: $subject)
+                    TextField(T("Subject"), text: $subject)
                         .font(.title3.weight(.semibold))
                         .textFieldStyle(.plain)
                         .padding(.horizontal, 14).padding(.vertical, 12)
                     if !boardCategories.isEmpty {
                         Divider()
-                        Picker("Category", selection: $categoryID) {
-                            Text("No category").tag(0)
+                        Picker(T("Category"), selection: $categoryID) {
+                            Text(T("No category")).tag(0)
                             ForEach(boardCategories) { c in Text(c.name).tag(c.id) }
                         }
                         .padding(.horizontal, 10)
@@ -69,12 +69,12 @@ struct ComposeView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(T("Cancel")) { dismiss() }
                 }
                 ToolbarItem(placement: .principal) { EmptyView() }
                 ToolbarItem(placement: .primaryAction) {
                     if posting { ProgressView() }
-                    else { Button("Post", action: post).fontWeight(.semibold).disabled(!canPost) }
+                    else { Button(T("Post"), action: post).fontWeight(.semibold).disabled(!canPost) }
                 }
                 ToolbarItemGroup(placement: .keyboard) {
                     PhotosPicker(selection: $photoItems, maxSelectionCount: 8, matching: .images) {
@@ -83,8 +83,8 @@ struct ComposeView: View {
                     Spacer()
                 }
             }
-            .alert("Couldn’t post", isPresented: .constant(error != nil)) {
-                Button("OK") { error = nil }
+            .alert(T("Couldn’t post"), isPresented: .constant(error != nil)) {
+                Button(T("OK")) { error = nil }
             } message: { Text(error ?? "") }
             .sheet(isPresented: $showSubjectSheet) {
                 SubjectSuggestionSheet(current: subject, suggested: suggestedSubject) { useSuggested in
@@ -158,7 +158,7 @@ struct ComposeView: View {
     }
 
     private var uploadingBar: some View {
-        HStack { ProgressView(); Text("Uploading image…").font(.caption) }
+        HStack { ProgressView(); Text(T("Uploading image…")).font(.caption) }
             .padding(8)
             .background(.regularMaterial, in: Capsule())
             .padding(.bottom, 8)
@@ -264,23 +264,23 @@ struct SubjectSuggestionSheet: View {
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 16) {
-                Text("A clearer subject helps people find and answer your post.")
+                Text(T("A clearer subject helps people find and answer your post."))
                     .font(.system(size: 15)).foregroundStyle(Color.dcInkSoft)
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("YOUR SUBJECT").font(.caption).foregroundStyle(Color.dcMuted)
+                    Text(T("YOUR SUBJECT")).font(.caption).foregroundStyle(Color.dcMuted)
                     Text(current).font(.system(size: 16, weight: .semibold)).foregroundStyle(Color.dcInk)
                 }
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("SUGGESTED").font(.caption).foregroundStyle(Color.dcAccentInk)
+                    Text(T("SUGGESTED")).font(.caption).foregroundStyle(Color.dcAccentInk)
                     Text(suggested).font(.system(size: 16, weight: .semibold)).foregroundStyle(Color.dcInk)
                 }
                 Spacer()
-                Button("Use suggested subject") { onDecision(true) }
+                Button(T("Use suggested subject")) { onDecision(true) }
                     .buttonStyle(DCPrimaryButtonStyle()).frame(maxWidth: .infinity)
-                Button("Keep mine") { onDecision(false) }.frame(maxWidth: .infinity)
+                Button(T("Keep mine")) { onDecision(false) }.frame(maxWidth: .infinity)
             }
             .padding(20)
-            .navigationTitle("Clearer subject?").navigationBarTitleDisplayMode(.inline)
+            .navigationTitle(T("Clearer subject?")).navigationBarTitleDisplayMode(.inline)
         }
         .presentationDetents([.medium])
     }
@@ -298,7 +298,7 @@ struct PreAnswerSheet: View {
                 VStack(alignment: .leading, spacing: 14) {
                     HStack(spacing: 8) {
                         Image(systemName: "sparkles").foregroundStyle(Color.dcAccent)
-                        Text("Derek may already have an answer")
+                        Text(T("Derek may already have an answer"))
                             .font(.system(size: 17, weight: .bold)).foregroundStyle(Color.dcInk)
                     }
                     TrixContentView(html: html, onRoute: onRoute).font(.system(size: 15))
@@ -306,12 +306,12 @@ struct PreAnswerSheet: View {
             }
             .safeAreaInset(edge: .bottom) {
                 HStack(spacing: 12) {
-                    Button("Let me reconsider") { onDecision(false) }.frame(maxWidth: .infinity)
-                    Button("Post anyway") { onDecision(true) }
+                    Button(T("Let me reconsider")) { onDecision(false) }.frame(maxWidth: .infinity)
+                    Button(T("Post anyway")) { onDecision(true) }
                         .buttonStyle(DCPrimaryButtonStyle()).frame(maxWidth: .infinity)
                 }.padding(16).background(.regularMaterial)
             }
-            .navigationTitle("Before you post").navigationBarTitleDisplayMode(.inline)
+            .navigationTitle(T("Before you post")).navigationBarTitleDisplayMode(.inline)
         }
     }
 }

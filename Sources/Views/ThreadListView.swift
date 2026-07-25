@@ -60,7 +60,7 @@ struct ThreadListView: View {
             }
             Spacer()
             if session.canPost {
-                Button { composing = true } label: { Label("New message", systemImage: "plus") }
+                Button { composing = true } label: { Label(T("New message"), systemImage: "plus") }
                     .buttonStyle(DCPrimaryButtonStyle())
             }
         }
@@ -98,7 +98,7 @@ struct ThreadListView: View {
         if loading && rows.isEmpty {
             ProgressView().frame(maxWidth: .infinity).padding(.top, 40)
         } else if rows.isEmpty {
-            ContentUnavailableView("No threads yet", systemImage: "tray").padding(.top, 30)
+            ContentUnavailableView(T("No threads yet"), systemImage: "tray").padding(.top, 30)
         } else {
             VStack(spacing: 0) {
                 ForEach(rows) { row in

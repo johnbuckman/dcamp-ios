@@ -70,8 +70,8 @@ struct EmojiPicker: View {
                 .padding()
             }
             .background(Color.dcBg)
-            .navigationTitle("React").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Cancel") { dismiss() } } }
+            .navigationTitle(T("React")).navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(T("Cancel")) { dismiss() } } }
         }
         .presentationDetents([.medium])
     }

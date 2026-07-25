@@ -31,8 +31,8 @@ struct HelpView: View {
                 .dcColumn()
             }
             .background(Color.dcBg).scrollContentBackground(.hidden)
-            .navigationTitle("Help").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
+            .navigationTitle(T("Help")).navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(T("Done")) { dismiss() } } }
         }
     }
 }

@@ -12,9 +12,9 @@ struct NotificationsView: View {
         NavigationStack {
             Group {
                 if store.items.isEmpty {
-                    ContentUnavailableView("You’re all caught up",
+                    ContentUnavailableView(T("You’re all caught up"),
                                            systemImage: "bell.slash",
-                                           description: Text("New mentions, replies and messages will appear here."))
+                                           description: Text(T("New mentions, replies and messages will appear here.")))
                 } else {
                     List(store.items) { notif in
                         Button { open(notif) } label: { NotifRow(notif: notif) }
@@ -22,16 +22,16 @@ struct NotificationsView: View {
                     }
                 }
             }
-            .navigationTitle("Notifications")
+            .navigationTitle(T("Notifications"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     if !store.items.isEmpty {
-                        Button("Mark all read") { Task { await store.markAllSeen() } }
+                        Button(T("Mark all read")) { Task { await store.markAllSeen() } }
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
+                    Button(T("Done")) { dismiss() }
                 }
             }
         }

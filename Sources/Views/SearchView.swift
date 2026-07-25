@@ -81,9 +81,9 @@ struct SearchView: View {
         .scrollContentBackground(.hidden)
         .background(Color.dcBg)
         .overlay { emptyState }
-        .searchable(text: $query, prompt: "Search dcamp")
+        .searchable(text: $query, prompt: Text(T("Search dcamp")))
         .onChange(of: query) { _, q in schedule(q); derekAnswer = nil; derekTask?.cancel(); derekLoading = false }
-        .navigationTitle("Search")
+        .navigationTitle(T("Search"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -100,7 +100,7 @@ struct SearchView: View {
             if let a = derekAnswer {
                 HStack(spacing: 6) {
                     Image(systemName: "sparkles").foregroundStyle(Color.dcAccent)
-                    Text("Derek says").font(.system(size: 14, weight: .bold)).foregroundStyle(Color.dcInk)
+                    Text(T("Derek says")).font(.system(size: 14, weight: .bold)).foregroundStyle(Color.dcInk)
                 }
                 TrixContentView(html: a, onRoute: routeToken).font(.system(size: 15))
             } else {
@@ -153,8 +153,8 @@ struct SearchView: View {
                         }
                     }
                     Menu {
-                        Picker("Sort", selection: $sortNewest) {
-                            Text("Relevance").tag(false); Text("Newest").tag(true)
+                        Picker(T("Sort"), selection: $sortNewest) {
+                            Text(T("Relevance")).tag(false); Text(T("Newest")).tag(true)
                         }
                     } label: { DCFilterPill(icon: "arrow.up.arrow.down", title: sortNewest ? "Newest" : "Relevance", active: false) {}.allowsHitTesting(false) }
                     DCFilterPill(icon: "checkmark.seal", title: "Best matches", active: goodOnly) { goodOnly.toggle() }
@@ -173,7 +173,7 @@ struct SearchView: View {
                 }
             }
             if !response.people.isEmpty, let ex = response.experts, !ex.isEmpty {
-                Toggle(isOn: $expertsOnly) { Text("Experts only").font(.system(size: 13, weight: .semibold)) }
+                Toggle(isOn: $expertsOnly) { Text(T("Experts only")).font(.system(size: 13, weight: .semibold)) }
                     .toggleStyle(.button).tint(.dcAccent).font(.caption)
             }
         }
@@ -186,8 +186,8 @@ struct SearchView: View {
         } else if query.count >= 2 && visibleResults.isEmpty && visiblePeople.isEmpty {
             ContentUnavailableView.search(text: query)
         } else if query.count < 2 {
-            ContentUnavailableView("Search dcamp", systemImage: "magnifyingglass",
-                                   description: Text("Find threads, comments, chat, DMs and people."))
+            ContentUnavailableView(T("Search dcamp"), systemImage: "magnifyingglass",
+                                   description: Text(T("Find threads, comments, chat, DMs and people.")))
         }
     }
 
@@ -241,7 +241,7 @@ struct SearchHitRow: View {
                 Text(highlighted(hit.title ?? "Untitled")).font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Color.dcInk).lineLimit(1)
                 if hit.isUntranslated {
-                    Text("not translated").font(.system(size: 10)).foregroundStyle(Color.dcMuted)
+                    Text(T("not translated")).font(.system(size: 10)).foregroundStyle(Color.dcMuted)
                         .padding(.horizontal, 5).padding(.vertical, 1)
                         .overlay(Capsule().stroke(Color.dcLineStrong, lineWidth: 1))
                 }
@@ -301,16 +301,16 @@ struct SearchHelpSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                Section("Tips") {
-                    Label("Type two or more letters to search.", systemImage: "textformat")
-                    Label("Filter by Threads, Comments, Chat or DMs.", systemImage: "line.3.horizontal.decrease")
-                    Label("Sort by relevance or newest; “Best matches” hides weak hits.", systemImage: "arrow.up.arrow.down")
-                    Label("“Experts only” narrows people to recognised experts.", systemImage: "star.fill")
-                    Label("Ask Derek for an AI answer drawn from the whole forum.", systemImage: "sparkles")
+                Section(T("Tips")) {
+                    Label(T("Type two or more letters to search."), systemImage: "textformat")
+                    Label(T("Filter by Threads, Comments, Chat or DMs."), systemImage: "line.3.horizontal.decrease")
+                    Label(T("Sort by relevance or newest; “Best matches” hides weak hits."), systemImage: "arrow.up.arrow.down")
+                    Label(T("“Experts only” narrows people to recognised experts."), systemImage: "star.fill")
+                    Label(T("Ask Derek for an AI answer drawn from the whole forum."), systemImage: "sparkles")
                 }
             }
-            .navigationTitle("Search help").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
+            .navigationTitle(T("Search help")).navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(T("Done")) { dismiss() } } }
         }
         .presentationDetents([.medium])
     }

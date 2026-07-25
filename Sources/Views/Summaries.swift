@@ -55,7 +55,7 @@ struct SummarizeBar: View {
                 }
                 Button(expanded ? "Hide" : "Summarize") { toggle() }.buttonStyle(DCPrimaryButtonStyle())
                 if expanded && hSize == .regular {
-                    Button { pinToSidebar() } label: { Label("Show in sidebar", systemImage: "sidebar.left") }
+                    Button { pinToSidebar() } label: { Label(T("Show in sidebar"), systemImage: "sidebar.left") }
                         .font(.system(size: 13))
                 }
                 Spacer()
@@ -65,7 +65,7 @@ struct SummarizeBar: View {
                 VStack(alignment: .leading, spacing: 10) {
                     if let mine {   // "you were mentioned" callout (home summary)
                         VStack(alignment: .leading, spacing: 4) {
-                            Label("You were mentioned", systemImage: "at.circle.fill")
+                            Label(T("You were mentioned"), systemImage: "at.circle.fill")
                                 .font(.system(size: 13, weight: .bold)).foregroundStyle(Color.dcAccentInk)
                             TrixContentView(html: mine).font(.system(size: 14))
                         }
@@ -75,7 +75,7 @@ struct SummarizeBar: View {
                     }
                     Group {
                         if loading {
-                            HStack(spacing: 8) { ProgressView(); Text("Summarizing…").font(.footnote).foregroundStyle(Color.dcMuted) }
+                            HStack(spacing: 8) { ProgressView(); Text(T("Summarizing…")).font(.footnote).foregroundStyle(Color.dcMuted) }
                                 .frame(maxWidth: .infinity).padding(.vertical, 20)
                         } else if let html {
                             TrixContentView(html: html).font(.system(size: 15))
@@ -162,14 +162,14 @@ struct EmailSummariesView: View {
 
     var body: some View {
         Form {
-            Section("Frequency") {
-                Picker("Send me a summary", selection: $period) {
-                    Text("Daily").tag("day"); Text("Weekly").tag("week"); Text("Monthly").tag("month")
+            Section(T("Frequency")) {
+                Picker(T("Send me a summary"), selection: $period) {
+                    Text(T("Daily")).tag("day"); Text(T("Weekly")).tag("week"); Text(T("Monthly")).tag("month")
                 }.pickerStyle(.segmented)
-                Toggle("Email me summaries", isOn: $emailEnabled)
+                Toggle(T("Email me summaries"), isOn: $emailEnabled)
                 if emailEnabled { Text("You’re signed up for \(periodLabel) summaries.").font(.caption).foregroundStyle(Color.dcMuted) }
             }
-            Section("Include") {
+            Section(T("Include")) {
                 ForEach(sourceOptions, id: \.0) { id, name in
                     Toggle(name, isOn: Binding(
                         get: { selectedSources.contains(id) },
@@ -178,19 +178,19 @@ struct EmailSummariesView: View {
                 }
             }
             Section {
-                Button { Task { await save() } } label: { Text("Save summary settings") }
+                Button { Task { await save() } } label: { Text(T("Save summary settings")) }
                 Button { Task { await sendSample() } } label: {
                     Label(sampleSentAt == nil ? "Email me a sample" : "Sample sent", systemImage: "paperplane")
                 }.disabled(sampleSentAt != nil && Date().timeIntervalSince(sampleSentAt!) < 60)
             }
-            Section("Preview") {
-                if loading { HStack { ProgressView(); Text("Generating…").foregroundStyle(Color.dcMuted) } }
+            Section(T("Preview")) {
+                if loading { HStack { ProgressView(); Text(T("Generating…")).foregroundStyle(Color.dcMuted) } }
                 else if let d = digest { TrixContentView(html: d).font(.system(size: 14)) }
-                else { Button("Preview my digest") { Task { await preview() } } }
+                else { Button(T("Preview my digest")) { Task { await preview() } } }
             }
         }
         .scrollContentBackground(.hidden).background(Color.dcBg)
-        .navigationTitle("Summaries by email").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(T("Summaries by email")).navigationBarTitleDisplayMode(.inline)
         .task { await load() }
         .onChange(of: period) { _, _ in digest = nil }
     }

@@ -29,7 +29,7 @@ struct SendBar: View {
                 .background(Color.dcPanel, in: RoundedRectangle(cornerRadius: 12))
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.dcLineStrong, lineWidth: 1))
             Button(action: onSend) {
-                Text("Send")
+                Text(T("Send"))
             }
             .buttonStyle(DCPrimaryButtonStyle())
             .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || sending)
@@ -120,15 +120,15 @@ struct ChatView: View {
                                     LineRow(author: line.author, html: line.html, createdAt: line.createdAt, translated: line.bodyTr)
                                     if session.isAdmin {
                                         Menu {
-                                            Button { editingLine = line } label: { Label("Edit", systemImage: "pencil") }
-                                            Button(role: .destructive) { Task { await api.chatDelete(id: line.id); await store.reload() } } label: { Label("Delete", systemImage: "trash") }
+                                            Button { editingLine = line } label: { Label(T("Edit"), systemImage: "pencil") }
+                                            Button(role: .destructive) { Task { await api.chatDelete(id: line.id); await store.reload() } } label: { Label(T("Delete"), systemImage: "trash") }
                                         } label: { Image(systemName: "ellipsis").foregroundStyle(Color.dcMuted).padding(4) }
                                     }
                                 }
                                 .padding(.bottom, 4)
                                 .id(line.id)
                                 .contextMenu {
-                                    Button { copyChatLink(line.id) } label: { Label("Link to this", systemImage: "link") }
+                                    Button { copyChatLink(line.id) } label: { Label(T("Link to this"), systemImage: "link") }
                                 }
                                 Divider().background(Color.dcLine)
                             }
@@ -149,14 +149,14 @@ struct ChatView: View {
             } else {
                 HStack(spacing: 8) {
                     Image(systemName: "lock").foregroundStyle(Color.dcMuted)
-                    Text("You have read-only access — chat is for current Decent machine owners.")
+                    Text(T("You have read-only access — chat is for current Decent machine owners."))
                         .font(.footnote).foregroundStyle(Color.dcMuted)
                 }
                 .padding(14).frame(maxWidth: .infinity, alignment: .leading).background(Color.dcBg)
             }
         }
         .background(Color.dcBg)
-        .navigationTitle("Chat Room")
+        .navigationTitle(T("Chat Room"))
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $editingLine) { line in
             ComposeView(mode: .editChat(line: line)) { _ in Task { await store.reload() } }
@@ -189,7 +189,7 @@ struct DMListView: View {
                     if let c = selected {
                         DMThreadView(convoID: c).id(c)
                     } else {
-                        ContentUnavailableView("Select a conversation", systemImage: "envelope")
+                        ContentUnavailableView(T("Select a conversation"), systemImage: "envelope")
                             .frame(maxWidth: .infinity)
                     }
                 }
@@ -198,7 +198,7 @@ struct DMListView: View {
             }
         }
         .background(Color.dcBg)
-        .navigationTitle("Messages")
+        .navigationTitle(T("Messages"))
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $composing, onDismiss: {
             if let c = pendingConvo { pendingConvo = nil; open(c) }
@@ -212,14 +212,14 @@ struct DMListView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
-                    Text("Direct Messages").font(.system(size: 22, weight: .heavy)).foregroundStyle(Color.dcInk)
+                    Text(T("Direct Messages")).font(.system(size: 22, weight: .heavy)).foregroundStyle(Color.dcInk)
                     Spacer()
                     Button { composing = true } label: { Image(systemName: "square.and.pencil") }
                         .buttonStyle(.plain).foregroundStyle(Color.dcAccent)
                 }
                 if convos.isEmpty && !loading {
-                    ContentUnavailableView("No messages yet", systemImage: "envelope",
-                                           description: Text("Start a private conversation.")).padding(.top, 30)
+                    ContentUnavailableView(T("No messages yet"), systemImage: "envelope",
+                                           description: Text(T("Start a private conversation."))).padding(.top, 30)
                 } else {
                     VStack(spacing: 0) {
                         ForEach(convos) { c in
@@ -231,7 +231,7 @@ struct DMListView: View {
                             .contextMenu {
                                 Button(role: .destructive) {
                                     Task { await api.dmArchive(convoID: c.id); await load() }
-                                } label: { Label("Archive", systemImage: "archivebox") }
+                                } label: { Label(T("Archive"), systemImage: "archivebox") }
                             }
                             Divider().background(Color.dcLine)
                         }
@@ -334,9 +334,9 @@ struct DMThreadView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    Button { showInvite = true } label: { Label("Add people", systemImage: "person.badge.plus") }
+                    Button { showInvite = true } label: { Label(T("Add people"), systemImage: "person.badge.plus") }
                     if store.thread.members.count > 1 {
-                        Menu("Remove") {
+                        Menu(T("Remove")) {
                             ForEach(store.thread.members) { p in
                                 Button(p.name) { Task { await api.dmRemove(convoID: convoID, personID: p.id); await store.reload() } }
                             }
@@ -430,16 +430,16 @@ struct PeopleSearchSheet: View {
             }
             .overlay {
                 if results.isEmpty {
-                    ContentUnavailableView("Find someone", systemImage: "person.2",
-                                           description: Text("Search people by name."))
+                    ContentUnavailableView(T("Find someone"), systemImage: "person.2",
+                                           description: Text(T("Search people by name.")))
                 }
             }
-            .searchable(text: $query, prompt: "Search people")
+            .searchable(text: $query, prompt: Text(T("Search people")))
             .onChange(of: query) { _, q in Task { await runSearch(q) } }
             .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
-            .alert("Something went wrong", isPresented: .constant(error != nil)) {
-                Button("OK") { error = nil }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button(T("Cancel")) { dismiss() } } }
+            .alert(T("Something went wrong"), isPresented: .constant(error != nil)) {
+                Button(T("OK")) { error = nil }
             } message: { Text(error ?? "") }
         }
     }
@@ -493,23 +493,23 @@ struct NewDMView: View {
                 }
                 .overlay {
                     if results.isEmpty {
-                        ContentUnavailableView("Find people", systemImage: "person.2",
-                                               description: Text("Search by name; pick one or more."))
+                        ContentUnavailableView(T("Find people"), systemImage: "person.2",
+                                               description: Text(T("Search by name; pick one or more.")))
                     }
                 }
             }
-            .searchable(text: $query, prompt: "Search people")
+            .searchable(text: $query, prompt: Text(T("Search people")))
             .onChange(of: query) { _, q in Task { await run(q) } }
-            .navigationTitle(selected.count > 1 ? "New group message" : "New message")
+            .navigationTitle(selected.count > 1 ? T("New group message") : T("New message"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button(T("Cancel")) { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Start") { start() }.disabled(selected.isEmpty || busy).fontWeight(.semibold)
+                    Button(T("Start")) { start() }.disabled(selected.isEmpty || busy).fontWeight(.semibold)
                 }
             }
-            .alert("Something went wrong", isPresented: .constant(error != nil)) {
-                Button("OK") { error = nil }
+            .alert(T("Something went wrong"), isPresented: .constant(error != nil)) {
+                Button(T("OK")) { error = nil }
             } message: { Text(error ?? "") }
         }
     }

@@ -50,34 +50,34 @@ struct SettingsView: View {
             }
             .scrollContentBackground(.hidden)
             .background(Color.dcBg)
-            .navigationTitle("My settings")
+            .navigationTitle(T("My settings"))
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(T("Done")) { dismiss() } } }
             .task { await load() }
-            .confirmationDialog("Close your account?", isPresented: $showClose, titleVisibility: .visible) {
-                Button("Close account", role: .destructive) { Task { await api.accountClose(); await session.logout(); dismiss() } }
-                Button("Cancel", role: .cancel) {}
-            } message: { Text("Your posts stay, but you’re removed from search, @mention and the member list. Logging in again reopens it.") }
+            .confirmationDialog(T("Close your account?"), isPresented: $showClose, titleVisibility: .visible) {
+                Button(T("Close account"), role: .destructive) { Task { await api.accountClose(); await session.logout(); dismiss() } }
+                Button(T("Cancel"), role: .cancel) {}
+            } message: { Text(T("Your posts stay, but you’re removed from search, @mention and the member list. Logging in again reopens it.")) }
             .sheet(isPresented: $showHelp) { HelpView() }
         }
     }
 
     private var profileSection: some View {
-        Section("Profile") {
-            TextField("Display name", text: $name)
-            TextField("About you", text: $about, axis: .vertical).lineLimit(2...4)
+        Section(T("Profile")) {
+            TextField(T("Display name"), text: $name)
+            TextField(T("About you"), text: $about, axis: .vertical).lineLimit(2...4)
             Button {
                 savingProfile = true
                 Task { await api.settingsSave(name: name, about: about, avatarImg: session.me?.avatarImg ?? "", showLocation: showLocation); await session.refresh(); savingProfile = false }
             } label: {
-                HStack { if savingProfile { ProgressView() }; Text("Save profile") }
+                HStack { if savingProfile { ProgressView() }; Text(T("Save profile")) }
             }
         }
     }
 
     private var appearanceSection: some View {
-        Section("Appearance") {
-            Picker("Theme", selection: $themeRaw) {
+        Section(T("Appearance")) {
+            Picker(T("Theme"), selection: $themeRaw) {
                 ForEach(ThemeMode.allCases) { m in Text(m.label).tag(m.rawValue) }
             }
             .pickerStyle(.segmented)
@@ -89,8 +89,8 @@ struct SettingsView: View {
     }
 
     private var languageSection: some View {
-        Section("Language") {
-            Picker("Language", selection: $langPref) {
+        Section(T("Language")) {
+            Picker(T("Language"), selection: $langPref) {
                 ForEach(AppLanguage.all) { l in Text(l.name).tag(l.code) }
             }
             .onChange(of: langPref) { _, _ in
@@ -101,17 +101,17 @@ struct SettingsView: View {
                     await strings.load()
                 }
             }
-            Text("Content and the interface appear in your language. Interface translations arrive as they’re added on the server.")
+            Text(T("Content and the interface appear in your language. Interface translations arrive as they’re added on the server."))
                 .font(.caption).foregroundStyle(Color.dcMuted)
         }
     }
 
     private var locationSection: some View {
-        Section("Location") {
-            HStack { Text("City"); Spacer(); TextField("City", text: $city).multilineTextAlignment(.trailing) }
-            HStack { Text("Country"); Spacer(); TextField("US", text: $country).multilineTextAlignment(.trailing).frame(width: 80) }
-            Toggle("Show my city & country on my profile", isOn: $showLocation)
-            Button("Save location") { Task { await api.locationSave(country: country, city: city); await api.settingsSave(name: name, about: about, avatarImg: session.me?.avatarImg ?? "", showLocation: showLocation) } }
+        Section(T("Location")) {
+            HStack { Text(T("City")); Spacer(); TextField(T("City"), text: $city).multilineTextAlignment(.trailing) }
+            HStack { Text(T("Country")); Spacer(); TextField(T("US"), text: $country).multilineTextAlignment(.trailing).frame(width: 80) }
+            Toggle(T("Show my city & country on my profile"), isOn: $showLocation)
+            Button(T("Save location")) { Task { await api.locationSave(country: country, city: city); await api.settingsSave(name: name, about: about, avatarImg: session.me?.avatarImg ?? "", showLocation: showLocation) } }
         }
     }
 
@@ -121,14 +121,14 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(label).font(.subheadline.weight(.medium))
                     HStack(spacing: 18) {
-                        Toggle("Popup", isOn: popupBinding(key)).toggleStyle(.button).tint(.dcAccent)
-                        Toggle("Email", isOn: emailBinding(key)).toggleStyle(.button).tint(.dcAccent)
+                        Toggle(T("Popup"), isOn: popupBinding(key)).toggleStyle(.button).tint(.dcAccent)
+                        Toggle(T("Email"), isOn: emailBinding(key)).toggleStyle(.button).tint(.dcAccent)
                     }
                     .font(.caption)
                 }
                 .padding(.vertical, 2)
             }
-        } header: { Text("Notifications") } footer: { Text("Popups appear in-app and as push. Email for mentions/replies is paused in favour of summaries.") }
+        } header: { Text(T("Notifications")) } footer: { Text(T("Popups appear in-app and as push. Email for mentions/replies is paused in favour of summaries.")) }
     }
 
     private func popupBinding(_ key: String) -> Binding<Bool> {
@@ -142,27 +142,27 @@ struct SettingsView: View {
     private func savePrefs() { Task { await api.notifPrefsSave(email: Array(email), popup: Array(popup)) } }
 
     private var summarySection: some View {
-        Section("Summaries by email") {
-            Picker("Frequency", selection: $summaryPeriod) {
-                Text("Daily").tag("day"); Text("Weekly").tag("week"); Text("Monthly").tag("month")
+        Section(T("Summaries by email")) {
+            Picker(T("Frequency"), selection: $summaryPeriod) {
+                Text(T("Daily")).tag("day"); Text(T("Weekly")).tag("week"); Text(T("Monthly")).tag("month")
             }
-            Toggle("Email me summaries", isOn: $summaryEmail)
-            Button("Save summary settings") {
+            Toggle(T("Email me summaries"), isOn: $summaryEmail)
+            Button(T("Save summary settings")) {
                 Task { await api.summaryPrefsSave(sources: summarySources, period: summaryPeriod, emailEnabled: summaryEmail) }
             }
             NavigationLink { EmailSummariesView().environment(session) } label: {
-                Label("Manage sources & email a sample", systemImage: "slider.horizontal.3")
+                Label(T("Manage sources & email a sample"), systemImage: "slider.horizontal.3")
             }
         }
     }
 
     private var mutedSection: some View {
-        Section("Muted people") {
+        Section(T("Muted people")) {
             ForEach(muted) { p in
                 HStack {
                     Avatar(person: p, size: 28); Text(p.name)
                     Spacer()
-                    Button("Unmute") { Task { await api.personUnmute(id: p.id); muted.removeAll { $0.id == p.id } } }
+                    Button(T("Unmute")) { Task { await api.personUnmute(id: p.id); muted.removeAll { $0.id == p.id } } }
                         .buttonStyle(.borderless)
                 }
             }
@@ -170,9 +170,9 @@ struct SettingsView: View {
     }
 
     private var basecampSection: some View {
-        Section("Basecamp") {
+        Section(T("Basecamp")) {
             HStack {
-                Text("Account")
+                Text(T("Account"))
                 Spacer()
                 Text(session.bcLinked ? "Linked" : "Not linked")
                     .foregroundStyle(session.bcLinked ? Color.dcAccentInk : Color.dcMuted)
@@ -182,11 +182,11 @@ struct SettingsView: View {
 
     private var accountSection: some View {
         Section {
-            Button { showHelp = true } label: { Label("Help", systemImage: "questionmark.circle") }
+            Button { showHelp = true } label: { Label(T("Help"), systemImage: "questionmark.circle") }
             if let me = session.me { LabeledContent("dcamp id", value: "\(me.id)") }
-            Button(role: .destructive) { showClose = true } label: { Text("Close account") }
+            Button(role: .destructive) { showClose = true } label: { Text(T("Close account")) }
             Button(role: .destructive) { Task { await session.logout(); dismiss() } } label: {
-                Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
+                Label(T("Sign out"), systemImage: "rectangle.portrait.and.arrow.right")
             }
         }
     }

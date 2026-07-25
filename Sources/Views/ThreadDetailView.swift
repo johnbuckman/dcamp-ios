@@ -89,18 +89,18 @@ struct ThreadDetailView: View {
             ComposeView(mode: .editComment(comment: c)) { _ in Task { await load() } }
         }
         .onChange(of: scrollTick) { withAnimation { proxy.scrollTo("composer", anchor: .bottom) } }
-        .confirmationDialog("Delete this post?", isPresented: Binding(get: { pendingDeleteMessage != nil }, set: { if !$0 { pendingDeleteMessage = nil } }), titleVisibility: .visible) {
-            Button("Delete", role: .destructive) { if let m = pendingDeleteMessage { pendingDeleteMessage = nil; deleteMessage(m) } }
-            Button("Cancel", role: .cancel) { pendingDeleteMessage = nil }
-        } message: { Text("This removes the whole thread. This can’t be undone.") }
-        .confirmationDialog("Delete this comment?", isPresented: Binding(get: { pendingDeleteComment != nil }, set: { if !$0 { pendingDeleteComment = nil } }), titleVisibility: .visible) {
-            Button("Delete", role: .destructive) { if let c = pendingDeleteComment { pendingDeleteComment = nil; deleteComment(c) } }
-            Button("Cancel", role: .cancel) { pendingDeleteComment = nil }
-        } message: { Text("This can’t be undone.") }
-        .confirmationDialog("Move to its own thread?", isPresented: $showOfftopic, titleVisibility: .visible) {
-            Button("Move it") { if let cid = offtopicCommentID { moveOfftopic(cid) } }
-            Button("Keep it here", role: .cancel) {}
-        } message: { Text("This comment looks like it’s about something else. Move it to its own thread?") }
+        .confirmationDialog(T("Delete this post?"), isPresented: Binding(get: { pendingDeleteMessage != nil }, set: { if !$0 { pendingDeleteMessage = nil } }), titleVisibility: .visible) {
+            Button(T("Delete"), role: .destructive) { if let m = pendingDeleteMessage { pendingDeleteMessage = nil; deleteMessage(m) } }
+            Button(T("Cancel"), role: .cancel) { pendingDeleteMessage = nil }
+        } message: { Text(T("This removes the whole thread. This can’t be undone.")) }
+        .confirmationDialog(T("Delete this comment?"), isPresented: Binding(get: { pendingDeleteComment != nil }, set: { if !$0 { pendingDeleteComment = nil } }), titleVisibility: .visible) {
+            Button(T("Delete"), role: .destructive) { if let c = pendingDeleteComment { pendingDeleteComment = nil; deleteComment(c) } }
+            Button(T("Cancel"), role: .cancel) { pendingDeleteComment = nil }
+        } message: { Text(T("This can’t be undone.")) }
+        .confirmationDialog(T("Move to its own thread?"), isPresented: $showOfftopic, titleVisibility: .visible) {
+            Button(T("Move it")) { if let cid = offtopicCommentID { moveOfftopic(cid) } }
+            Button(T("Keep it here"), role: .cancel) {}
+        } message: { Text(T("This comment looks like it’s about something else. Move it to its own thread?")) }
         .task(id: currentID) {
             await load()
             // Deep-link to a specific comment, else jump to the first unread.
@@ -143,26 +143,26 @@ struct ThreadDetailView: View {
 
     private func messageMenu(_ m: MessageDetail) -> some View {
         Menu {
-            Button { copyLink(messageID: m.id) } label: { Label("Copy link", systemImage: "link") }
+            Button { copyLink(messageID: m.id) } label: { Label(T("Copy link"), systemImage: "link") }
             if session.canPost {
-                Button { quote(m.html) } label: { Label("Quote & reply", systemImage: "quote.opening") }
+                Button { quote(m.html) } label: { Label(T("Quote & reply"), systemImage: "quote.opening") }
             }
             if canModify(m.author?.id) {
-                Button { editingMessage = m } label: { Label("Edit", systemImage: "pencil") }
+                Button { editingMessage = m } label: { Label(T("Edit"), systemImage: "pencil") }
                 // Problems-status control only applies to threads on the Problems board
                 // (matches the web: isProblemsProject && author-or-admin). The server
                 // tokens are unsolved / solved / notaproblem — NOT active/closed.
                 if isProblemsThread(m) {
-                    Menu("Mark as") {
-                        Button("Unsolved") { setStatus("unsolved", for: m.id) }
-                        Button("Solved") { setStatus("solved", for: m.id) }
-                        Button("Closed") { setStatus("notaproblem", for: m.id) }
+                    Menu(T("Mark as")) {
+                        Button(T("Unsolved")) { setStatus("unsolved", for: m.id) }
+                        Button(T("Solved")) { setStatus("solved", for: m.id) }
+                        Button(T("Closed")) { setStatus("notaproblem", for: m.id) }
                     }
                 }
                 if session.isAdmin {
-                    Button { pin(m) } label: { Label(m.pinned == 1 ? "Unpin" : "Pin", systemImage: "pin") }
+                    Button { pin(m) } label: { Label(m.pinned == 1 ? T("Unpin") : T("Pin"), systemImage: "pin") }
                 }
-                Button(role: .destructive) { pendingDeleteMessage = m } label: { Label("Delete", systemImage: "trash") }
+                Button(role: .destructive) { pendingDeleteMessage = m } label: { Label(T("Delete"), systemImage: "trash") }
             }
         } label: {
             Image(systemName: "ellipsis").font(.system(size: 18)).foregroundStyle(Color.dcMuted).padding(6)
@@ -189,13 +189,13 @@ struct ThreadDetailView: View {
 
     private func commentMenu(_ c: Comment) -> some View {
         Menu {
-            Button { copyLink(messageID: currentID, commentID: c.id) } label: { Label("Copy link", systemImage: "link") }
+            Button { copyLink(messageID: currentID, commentID: c.id) } label: { Label(T("Copy link"), systemImage: "link") }
             if session.canPost {
-                Button { quote(c.html) } label: { Label("Quote & reply", systemImage: "quote.opening") }
+                Button { quote(c.html) } label: { Label(T("Quote & reply"), systemImage: "quote.opening") }
             }
             if canModify(c.author?.id) {
-                Button { editingComment = c } label: { Label("Edit", systemImage: "pencil") }
-                Button(role: .destructive) { pendingDeleteComment = c } label: { Label("Delete", systemImage: "trash") }
+                Button { editingComment = c } label: { Label(T("Edit"), systemImage: "pencil") }
+                Button(role: .destructive) { pendingDeleteComment = c } label: { Label(T("Delete"), systemImage: "trash") }
             }
         } label: {
             Image(systemName: "ellipsis").font(.system(size: 15)).foregroundStyle(Color.dcMuted).padding(4)
@@ -207,7 +207,7 @@ struct ThreadDetailView: View {
     @ViewBuilder private var composerSection: some View {
         if session.canPost {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Add a comment").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.dcInk)
+                Text(T("Add a comment")).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.dcInk)
                 InlineComposer(placeholder: "Write a comment… (rich text, @mention)", model: composerModel, draftKey: "thread:\(currentID)") { html in
                     let r = try? await api.createComment(messageID: currentID, bodyHTML: html)
                     await load()
@@ -221,7 +221,7 @@ struct ThreadDetailView: View {
         } else {
             HStack(spacing: 8) {
                 Image(systemName: "lock").foregroundStyle(Color.dcMuted)
-                Text("You have read-only access — posting is for current Decent machine owners.")
+                Text(T("You have read-only access — posting is for current Decent machine owners."))
                     .font(.footnote).foregroundStyle(Color.dcMuted)
             }
             .padding(14).frame(maxWidth: .infinity, alignment: .leading)
@@ -309,7 +309,7 @@ struct SinceLastVisitDivider: View {
     var body: some View {
         HStack(spacing: 8) {
             Rectangle().fill(Color.dcAccent.opacity(0.35)).frame(height: 1)
-            Text("New since your last visit")
+            Text(T("New since your last visit"))
                 .font(.system(size: 11, weight: .bold)).foregroundStyle(Color.dcAccentInk).fixedSize()
             Rectangle().fill(Color.dcAccent.opacity(0.35)).frame(height: 1)
         }
