@@ -262,6 +262,11 @@ actor DcampAPI {
         req.httpMethod = "POST"
         req.setValue("application/x-www-form-urlencoded; charset=utf-8", forHTTPHeaderField: "Content-Type")
         if let token { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        // The app has no subdomain, so it tells the server its chosen language via a header
+        // (consumed by dcamp_native_apply_bearer → dcamp_lang). Empty = server default.
+        if let lang = UserDefaults.standard.string(forKey: "dcamp_lang"), !lang.isEmpty {
+            req.setValue(lang, forHTTPHeaderField: "X-Dcamp-Lang")
+        }
 
         var form = params
         form["action"] = action

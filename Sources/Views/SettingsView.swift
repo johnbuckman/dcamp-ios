@@ -26,6 +26,8 @@ struct SettingsView: View {
     @State private var showClose = false
     @State private var showHelp = false
     @AppStorage("dcamp_theme") private var themeRaw = ThemeMode.system.rawValue
+    @AppStorage("dcamp_lang") private var langPref = ""
+    @Environment(UIStrings.self) private var strings
 
     private let api = DcampAPI.shared
     private let kinds: [(String, String)] = [
@@ -38,6 +40,7 @@ struct SettingsView: View {
             Form {
                 profileSection
                 appearanceSection
+                languageSection
                 locationSection
                 notifSection
                 summarySection
@@ -82,6 +85,24 @@ struct SettingsView: View {
                 // Sync to the server so the web and other devices match (web ui-pref "dcamp_theme").
                 Task { await api.uiPrefsSave(name: "dcamp_theme", value: ThemeMode(rawValue: v)?.serverValue ?? "") }
             }
+        }
+    }
+
+    private var languageSection: some View {
+        Section("Language") {
+            Picker("Language", selection: $langPref) {
+                ForEach(AppLanguage.all) { l in Text(l.name).tag(l.code) }
+            }
+            .onChange(of: langPref) { _, _ in
+                // The X-Dcamp-Lang header now reads the new value; re-hydrate content + UI strings.
+                Task {
+                    await session.refresh()
+                    strings.lang = session.lang
+                    await strings.load()
+                }
+            }
+            Text("Content and the interface appear in your language. Interface translations arrive as they’re added on the server.")
+                .font(.caption).foregroundStyle(Color.dcMuted)
         }
     }
 

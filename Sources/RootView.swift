@@ -9,6 +9,7 @@ struct RootView: View {
         content
             .tint(Color.dcAccent)
             .preferredColorScheme(ThemeMode(rawValue: themeRaw)?.colorScheme)
+            .environment(\.layoutDirection, session.lang == "ar" ? .rightToLeft : .leftToRight)
     }
 
     @ViewBuilder private var content: some View {

@@ -53,8 +53,29 @@ final class UIStrings {
         if let m = try? await DcampAPI.shared.uiMap() { map = m }
     }
 
+    /// Localize a UI string. Falls back to English when there's no translation
+    /// (the server's ui_map is populated by a translation backfill).
     func t(_ english: String) -> String {
-        guard lang != "en" else { return english }
+        guard lang != "en", !lang.isEmpty else { return english }
         return map[english] ?? english
     }
+}
+
+/// The languages dcamp supports (matches the server's dcamp_all_langs).
+struct AppLanguage: Identifiable, Hashable {
+    let code: String
+    let name: String
+    var id: String { code }
+    static let all: [AppLanguage] = [
+        .init(code: "",         name: "Default"),
+        .init(code: "en",       name: "English"),
+        .init(code: "fr",       name: "Français"),
+        .init(code: "de",       name: "Deutsch"),
+        .init(code: "es",       name: "Español"),
+        .init(code: "kr",       name: "한국어"),
+        .init(code: "zh-hans",  name: "简体中文"),
+        .init(code: "zh-hant",  name: "繁體中文"),
+        .init(code: "ar",       name: "العربية"),
+    ]
+    static var isRTL: (String) -> Bool { { $0 == "ar" } }
 }

@@ -33,6 +33,10 @@ final class SessionStore {
     /// Called once on launch: resume a saved token or show the login screen.
     func start() async {
         #if DEBUG
+        // Screenshot harness: force a UI language (seeds the X-Dcamp-Lang header pref).
+        if let l = ProcessInfo.processInfo.environment["DCAMP_LANG"] {
+            UserDefaults.standard.set(l, forKey: "dcamp_lang")
+        }
         // Screenshot harness: force the logged-out login screen even if a token is cached.
         if ProcessInfo.processInfo.environment["DCAMP_SHOT_SCREEN"] == "login" { phase = .loggedOut; return }
         #endif
