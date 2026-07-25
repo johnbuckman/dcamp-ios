@@ -22,7 +22,7 @@ struct ComposeView: View {
     @State private var categoryID = 0
     @State private var posting = false
     @State private var error: String?
-    @State private var photoItem: PhotosPickerItem?
+    @State private var photoItems: [PhotosPickerItem] = []
     @State private var uploading = false
     @State private var posted = false
     @State private var precheckPassed = false
@@ -77,8 +77,8 @@ struct ComposeView: View {
                     else { Button("Post", action: post).fontWeight(.semibold).disabled(!canPost) }
                 }
                 ToolbarItemGroup(placement: .keyboard) {
-                    PhotosPicker(selection: $photoItem, matching: .images) {
-                        Image(systemName: "photo")
+                    PhotosPicker(selection: $photoItems, maxSelectionCount: 8, matching: .images) {
+                        Image(systemName: "photo.on.rectangle")
                     }
                     Spacer()
                 }
@@ -98,8 +98,10 @@ struct ComposeView: View {
                     if postAnyway { precheckPassed = true; doPost() }
                 }
             }
-            .onChange(of: photoItem) { _, item in
-                if let item { Task { await attach(item) } }
+            .onChange(of: photoItems) { _, items in
+                guard !items.isEmpty else { return }
+                let picked = items; photoItems = []
+                Task { await attachMany(picked) }
             }
             .onChange(of: model.submitRequested) { _, _ in if canPost { post() } }   // ⌘↵
             .onDisappear { if !posted { Task { await model.saveDraft() } } }
@@ -162,9 +164,13 @@ struct ComposeView: View {
             .padding(.bottom, 8)
     }
 
-    private func attach(_ item: PhotosPickerItem) async {
+    private func attachMany(_ items: [PhotosPickerItem]) async {
         uploading = true
-        defer { uploading = false; photoItem = nil }
+        defer { uploading = false }
+        for item in items { await attachOne(item) }
+    }
+
+    private func attachOne(_ item: PhotosPickerItem) async {
         do {
             guard let data = try await item.loadTransferable(type: Data.self) else { return }
             let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
