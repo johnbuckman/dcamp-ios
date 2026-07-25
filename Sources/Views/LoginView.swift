@@ -1,13 +1,11 @@
 import SwiftUI
 
-/// Native email + password login. Mints a bearer token via `auth_token`.
+/// Browser sign-in. The app never handles the password — it opens the
+/// /support/oauth2 authorize page in a system browser; an already-logged-in
+/// member signs in with one tap (shared Safari cookie). Admin status is captured
+/// server-side and baked into the returned token.
 struct LoginView: View {
     @Environment(SessionStore.self) private var session
-
-    @State private var email = ""
-    @State private var password = ""
-    @FocusState private var focus: Field?
-    private enum Field { case email, password }
 
     var body: some View {
         ZStack {
@@ -22,38 +20,32 @@ struct LoginView: View {
                     Text("Welcome to the Decent Diaspora")
                         .font(.system(size: 22, weight: .heavy)).foregroundStyle(Color.dcInk)
                         .multilineTextAlignment(.center)
-                    Text("Log in with your existing Decent support account.")
+                    Text("Sign in with your existing Decent support account.")
                         .font(.system(size: 15)).foregroundStyle(Color.dcInkSoft)
                         .multilineTextAlignment(.center)
                 }
 
-                VStack(alignment: .leading, spacing: 14) {
-                    field(label: "Email address") {
-                        TextField("", text: $email)
-                            .textContentType(.username).keyboardType(.emailAddress)
-                            .textInputAutocapitalization(.never).autocorrectionDisabled()
-                            .focused($focus, equals: .email).submitLabel(.next).onSubmit { focus = .password }
-                    }
-                    field(label: "Password") {
-                        SecureField("", text: $password)
-                            .textContentType(.password)
-                            .focused($focus, equals: .password).submitLabel(.go).onSubmit(submit)
-                    }
-
+                VStack(spacing: 12) {
                     if let msg = session.errorMessage {
                         Text(msg).font(.system(size: 13)).foregroundStyle(.red)
+                            .multilineTextAlignment(.center)
                     }
-
-                    Button(action: submit) {
-                        HStack {
+                    Button {
+                        Task { await session.loginWithBrowser() }
+                    } label: {
+                        HStack(spacing: 8) {
                             if session.loggingIn { ProgressView().tint(.white) }
-                            Text(session.loggingIn ? "Signing in…" : "Continue")
+                            else { Image(systemName: "safari") }
+                            Text(session.loggingIn ? "Signing in…" : "Sign in with Decent")
                         }
                         .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(DCPrimaryButtonStyle())
-                    .disabled(!canSubmit)
-                    .padding(.top, 4)
+                    .disabled(session.loggingIn)
+
+                    Text("Opens a secure browser. Your password is never entered in the app.")
+                        .font(.system(size: 12)).foregroundStyle(Color.dcMuted)
+                        .multilineTextAlignment(.center)
                 }
             }
             .padding(30)
@@ -61,27 +53,5 @@ struct LoginView: View {
             .dcCard(padding: 0)
             .padding(20)
         }
-        .onAppear { focus = .email }
-    }
-
-    @ViewBuilder private func field<Content: View>(label: String, @ViewBuilder _ content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(label).font(.system(size: 13, weight: .bold)).foregroundStyle(Color.dcInkSoft)
-            content()
-                .font(.system(size: 16))
-                .padding(.horizontal, 12).padding(.vertical, 11)
-                .background(Color.dcPanel, in: RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.dcLineStrong, lineWidth: 1))
-        }
-    }
-
-    private var canSubmit: Bool {
-        !email.isEmpty && !password.isEmpty && !session.loggingIn
-    }
-
-    private func submit() {
-        guard canSubmit else { return }
-        focus = nil
-        Task { await session.login(email: email, password: password) }
     }
 }

@@ -30,6 +30,18 @@ enum AppConfig {
     /// fields (structured content) without changing SPA behaviour.
     static let nativeClient = "native"
 
+    // MARK: - OAuth2 browser login (/support/oauth2 provider)
+    /// The app never handles the password: it opens the /support/oauth2 authorize
+    /// page in a system browser (ASWebAuthenticationSession), the user logs in there
+    /// (or is already logged in via a shared Safari cookie), and the browser redirects
+    /// back to `dcamp://auth?code=…`. Admin status is captured server-side at authorize
+    /// time (decent_admin_verified) and baked into the token — no adminpw on device.
+    static let oauthClientID = "dcamp-ios"
+    static let oauthRedirectScheme = "dcamp"
+    static let oauthRedirectURI = "dcamp://auth"
+    static var oauthAuthorizeURL: String { assetBase + "/support/oauth2/authorize" }
+    static var oauthTokenURL: String { assetBase + "/support/oauth2/token" }
+
     /// Hosts we keep *inside* the app's web view. Anything else opens in Safari.
     static let internalHosts: Set<String> = [
         "decentespresso.com",

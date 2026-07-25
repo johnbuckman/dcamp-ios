@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import AuthenticationServices
 
 /// App-wide session + bootstrap state. Drives the login gate and holds the
 /// board list. `@Observable` so SwiftUI views update automatically.
@@ -32,12 +33,21 @@ final class SessionStore {
     /// Called once on launch: resume a saved token or show the login screen.
     func start() async {
         #if DEBUG
+        // Screenshot harness: force the logged-out login screen even if a token is cached.
+        if ProcessInfo.processInfo.environment["DCAMP_SHOT_SCREEN"] == "login" { phase = .loggedOut; return }
+        #endif
+        #if DEBUG
         // Env-gated smoke test: lets a headless launch exercise the real
         // network+auth path (auth_token → bootstrap) without GUI login. Never
         // fires unless DCAMP_SMOKE_EMAIL is set. Safe to leave in DEBUG builds.
         let env = ProcessInfo.processInfo.environment
         if let em = env["DCAMP_SMOKE_EMAIL"], let pw = env["DCAMP_SMOKE_PW"] {
-            await login(email: em, password: pw)
+            // Headless auto-login uses the email/pw token mint directly (there's no
+            // browser in a smoke run). Production sign-in is browser-only (OAuth).
+            loggingIn = true
+            do { try await api.login(email: em, password: pw, deviceID: Self.deviceID); await loadBootstrap(initial: true) }
+            catch { errorMessage = (error as? DcampAPI.APIError)?.message ?? error.localizedDescription }
+            loggingIn = false
             FileHandle.standardError.write(Data(
                 "SMOKE result phase=\(phase) boards=\(boards.count) me=\(me?.name ?? "nil") canPost=\(canPost) err=\(errorMessage ?? "none")\n".utf8))
             if let mid = env["DCAMP_SMOKE_MSG"] {
@@ -105,15 +115,17 @@ final class SessionStore {
     }
     #endif
 
-    func login(email: String, password: String) async {
+    /// Browser sign-in (OAuth2 + PKCE). The password never touches the app.
+    func loginWithBrowser() async {
         errorMessage = nil
         loggingIn = true
         defer { loggingIn = false }
         do {
-            try await api.login(email: email.trimmingCharacters(in: .whitespaces),
-                                password: password,
-                                deviceID: Self.deviceID)
-            await loadBootstrap(initial: false)
+            let result = try await OAuthService.shared.authorize()
+            try await api.exchangeOAuth(code: result.code, verifier: result.verifier, deviceID: Self.deviceID)
+            await loadBootstrap(initial: true)
+        } catch let e as ASWebAuthenticationSessionError where e.code == .canceledLogin {
+            // User dismissed the browser sheet — not an error.
         } catch {
             errorMessage = (error as? DcampAPI.APIError)?.message ?? error.localizedDescription
         }

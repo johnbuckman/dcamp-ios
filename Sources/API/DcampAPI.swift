@@ -61,6 +61,38 @@ actor DcampAPI {
         setToken(nil)
     }
 
+    /// Exchange an OAuth authorization code (+ PKCE verifier) for a bearer token at
+    /// the /support/oauth2/token endpoint. Persists the token; returns is_admin.
+    @discardableResult
+    func exchangeOAuth(code: String, verifier: String, deviceID: String) async throws -> Bool {
+        guard let url = URL(string: AppConfig.oauthTokenURL) else {
+            throw APIError(message: "Bad token URL", code: nil)
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        let params = [
+            "grant_type": "authorization_code",
+            "code": code,
+            "code_verifier": verifier,
+            "redirect_uri": AppConfig.oauthRedirectURI,
+            "client_id": AppConfig.oauthClientID,
+            "device_id": deviceID,
+        ]
+        req.httpBody = params.map { k, v in
+            "\(k)=\(v.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? v)"
+        }.joined(separator: "&").data(using: .utf8)
+
+        let (data, _) = try await session.data(for: req)
+        struct R: Codable { var ok: Bool?; var accessToken: String?; var isAdmin: Int?; var error: String? }
+        let r = try decoder.decode(R.self, from: data)
+        guard let tok = r.accessToken, !tok.isEmpty else {
+            throw APIError(message: r.error ?? "Sign-in failed", code: nil)
+        }
+        setToken(tok)
+        return (r.isAdmin ?? 0) != 0
+    }
+
     // MARK: - Posting
 
     /// Create a new thread. Returns (id, slug).
