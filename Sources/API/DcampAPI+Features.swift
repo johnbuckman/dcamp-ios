@@ -68,6 +68,13 @@ extension DcampAPI {
     }
     func bcUnlink() async { _ = try? await rawData("bc_unlink", [:]) }
 
+    /// Chatroom activity for the home card: total messages + messages in the last 24h.
+    func chatInfo(room: String = "main") async -> (total: Int, last24: Int) {
+        struct R: Codable { var total: Int?; var last24: Int? }
+        let r: R? = try? await call("chat_info", ["room": room])
+        return (r?.total ?? 0, r?.last24 ?? 0)
+    }
+
     /// Register + translate a batch of UI-chrome strings into `lang` (on-demand via the
     /// server, then cached). Returns {english: translation}. English/empty → no-op.
     func uiStrings(_ strings: [String], lang: String) async -> [String: String] {
@@ -77,6 +84,14 @@ extension DcampAPI {
               let json = String(data: data, encoding: .utf8) else { return [:] }
         let r: R? = try? await call("ui_strings", ["lang": lang, "strings": json])
         return r?.map ?? [:]
+    }
+
+    /// Resolve a clean summary/message URL (`/dcamp/<board>/<slug>`) to a message id.
+    /// `board` may be the board slug or numeric id; `slug` is the message slug.
+    func resolveMsg(board: String, slug: String) async -> Int? {
+        struct R: Codable { var id: Int? }
+        let r: R? = try? await call("resolve_msg", ["project_id": board, "slug": slug])
+        return r?.id
     }
 
     /// Fetch a pasted URL's page title (the browser can't read a cross-origin <title>).
@@ -123,7 +138,9 @@ extension DcampAPI {
     // MARK: - Reactions
 
     func boostToggle(type: String, id: Int, content: String) async {
-        _ = try? await rawData("boost_toggle", ["type": type, "id": String(id), "content": content])
+        // The server dispatch reads parent_type / parent_id (dcamp_app.tcl boost_toggle);
+        // sending type/id silently failed the guard ("bad type") so NO reaction ever landed.
+        _ = try? await rawData("boost_toggle", ["parent_type": type, "parent_id": String(id), "content": content])
     }
 
     // MARK: - Edit / delete / status

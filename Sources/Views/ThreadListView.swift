@@ -100,14 +100,18 @@ struct ThreadListView: View {
         } else if rows.isEmpty {
             ContentUnavailableView(T("No threads yet"), systemImage: "tray").padding(.top, 30)
         } else {
-            VStack(spacing: 0) {
+            LazyVStack(spacing: 0) {
                 ForEach(rows) { row in
                     Button { router.threadSiblings = rows.map(\.id); path.append(.thread(row.id)) } label: { ThreadRowView(row: row) }
                         .buttonStyle(.plain)
+                        // Load the next page as the last row scrolls in. onAppear on the
+                        // last row re-fires as the list grows (a single trailing sentinel
+                        // with .task only ever fired once → the endless-spinner bug).
+                        .onAppear { if row.id == rows.last?.id { Task { await load(reset: false) } } }
                     Divider().background(Color.dcLine)
                 }
-                if rows.count < total {
-                    ProgressView().frame(maxWidth: .infinity).padding().task { await load(reset: false) }
+                if loading && rows.count < total {
+                    ProgressView().frame(maxWidth: .infinity).padding()
                 }
             }
             .dcCard(padding: 4)
@@ -162,7 +166,7 @@ struct ThreadRowView: View {
                 if !row.displayPreview.isEmpty {
                     Text(row.displayPreview).font(.system(size: 15)).foregroundStyle(Color.dcInkSoft).lineLimit(1)
                 }
-                if let rc = row.recentComment, !PlainText.strip(rc).isEmpty {
+                if let rc = row.recentCommentText, !PlainText.strip(rc).isEmpty {
                     Label(PlainText.strip(rc), systemImage: "arrowshape.turn.up.left")
                         .font(.system(size: 13)).foregroundStyle(Color.dcMuted).lineLimit(1)
                 }

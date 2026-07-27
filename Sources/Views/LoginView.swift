@@ -12,7 +12,8 @@ struct LoginView: View {
             Color.dcBg.ignoresSafeArea()
             VStack(spacing: 24) {
                 HStack(spacing: 9) {
-                    Image(systemName: "cup.and.saucer.fill").font(.system(size: 22)).foregroundStyle(Color.dcInk)
+                    // Same DE1 espresso-machine mark as the app top bar (not a coffee cup).
+                    Image("DcampMark").resizable().aspectRatio(contentMode: .fit).frame(height: 30)
                     Text(T("dcamp")).font(.system(size: 22, weight: .heavy)).foregroundStyle(Color.dcInk)
                 }
 

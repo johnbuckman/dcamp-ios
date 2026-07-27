@@ -24,6 +24,17 @@ struct TrixContentView: View {
                     .removingPercentEncoding ?? ""
                 if DcampRoute.personID(from: token) != nil {
                     router.open(route: token)              // mention → person card
+                } else if let (board, slug) = DcampRoute.cleanMsgParts(from: token) {
+                    // Clean summary anchor "/dcamp/<board>/<slug>": resolve to a message
+                    // id, then open the thread (in-place if we're inside one, else via
+                    // the router → pushes the thread; on iPad the summary stays pinned).
+                    Task {
+                        if let id = await DcampAPI.shared.resolveMsg(board: board, slug: slug) {
+                            await MainActor.run {
+                                if let onRoute { onRoute("/message/\(id)") } else { router.threadID = id }
+                            }
+                        }
+                    }
                 } else if let onRoute {
                     onRoute(token)                          // in-place message nav
                 } else {

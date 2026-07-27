@@ -9,6 +9,7 @@ import WebKit
 final class ComposerModel {
     var html = ""
     var contentLength = 0
+    var contentHeight: CGFloat = 0     // editor content height reported by the WebView (auto-grow)
     var ready = false
     var mentionQuery: String?      // non-nil while typing "@query"
     var submitRequested = 0        // bumped by ⌘↵ in the editor; observed by the host
@@ -119,18 +120,22 @@ struct InlineComposer: View {
 
     @State private var sending = false
 
+    /// Auto-grow: the WebView reports its content height; the composer grows from a
+    /// compact single-line size up to a cap, then scrolls internally (#9).
+    private var composerHeight: CGFloat { min(max(model.contentHeight + 44, 120), 280) }
+
     var body: some View {
         VStack(spacing: 8) {
             ComposerWebView(model: model)
-                .frame(height: 148)
+                .frame(height: composerHeight)
+                .animation(.easeOut(duration: 0.12), value: composerHeight)
                 .background(Color.dcPanel)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.dcLineStrong, lineWidth: 1))
                 .overlay(alignment: .top) { MentionOverlay(model: model).padding(.top, 52).padding(.horizontal, 8) }
-            HStack(spacing: 14) {
-                ComposerColorButton(model: model)
-                Button { model.insertHR() } label: { Image(systemName: "minus").font(.system(size: 16, weight: .bold)) }
-                    .foregroundStyle(Color.dcMuted)
+            HStack {
+                // Colour + horizontal-rule controls now live in the Trix toolbar
+                // (editor.html buildToolbar), matching the web composer.
                 Spacer()
                 Button(T("Send")) { send() }
                 .buttonStyle(DCPrimaryButtonStyle())
@@ -168,36 +173,6 @@ struct InlineComposer: View {
             }
             sending = false
         }
-    }
-}
-
-/// Text-colour + highlight picker for the composer (applies fgColor/bgColor Trix attrs).
-struct ComposerColorButton: View {
-    let model: ComposerModel
-    @State private var show = false
-    private let fg: [(String, Color)] = [("#dc2626", .red), ("#ea580c", .orange), ("#16a34a", .green), ("#2563eb", .blue), ("#7c3aed", .purple), ("#111111", .black)]
-    private let bg: [(String, Color)] = [("#fef08a", Color.yellow.opacity(0.55)), ("#bbf7d0", Color.green.opacity(0.5)), ("#bfdbfe", Color.blue.opacity(0.5)), ("#fbcfe8", Color.pink.opacity(0.5))]
-
-    var body: some View {
-        Button { show = true } label: { Image(systemName: "paintpalette").font(.system(size: 16)) }
-            .foregroundStyle(Color.dcMuted)
-            .popover(isPresented: $show) {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(T("Text colour")).font(.caption.bold()).foregroundStyle(Color.dcMuted)
-                    HStack(spacing: 10) { ForEach(fg, id: \.0) { hex, c in swatch(c) { model.setColor(fg: hex, bg: nil); show = false } } }
-                    Text(T("Highlight")).font(.caption.bold()).foregroundStyle(Color.dcMuted)
-                    HStack(spacing: 10) { ForEach(bg, id: \.0) { hex, c in swatch(c) { model.setColor(fg: nil, bg: hex); show = false } } }
-                    Button(T("Clear")) { model.clearColor(); show = false }.font(.footnote).padding(.top, 2)
-                }
-                .padding(16)
-                .presentationCompactAdaptation(.popover)
-            }
-    }
-    private func swatch(_ c: Color, _ act: @escaping () -> Void) -> some View {
-        Button(action: act) {
-            Circle().fill(c).frame(width: 26, height: 26)
-                .overlay(Circle().stroke(Color.dcLineStrong, lineWidth: 1))
-        }.buttonStyle(.plain)
     }
 }
 
@@ -259,6 +234,10 @@ struct ComposerWebView: UIViewRepresentable {
         web.isOpaque = false
         web.backgroundColor = .clear
         web.scrollView.keyboardDismissMode = .interactive
+        // The composer is a fixed-height rich-text box, not a scroll surface — the
+        // stray vertical scroll indicator (visible on Catalyst) just looks broken.
+        web.scrollView.showsVerticalScrollIndicator = false
+        web.scrollView.showsHorizontalScrollIndicator = false
         model.webView = web
         applyTheme(to: web)
 
@@ -298,6 +277,7 @@ struct ComposerWebView: UIViewRepresentable {
             case "change":
                 model.html = body["html"] as? String ?? ""
                 model.contentLength = body["length"] as? Int ?? 0
+                if let h = body["height"] as? Int, h > 0 { model.contentHeight = CGFloat(h) }
             case "mention":
                 model.mentionQuery = body["q"] as? String
             case "submit":

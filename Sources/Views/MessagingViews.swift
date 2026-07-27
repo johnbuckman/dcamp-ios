@@ -419,7 +419,7 @@ struct PeopleSearchSheet: View {
                     Task { if let e = await onPick(r) { error = e; busy = false } else { dismiss() } }
                 } label: {
                     HStack(spacing: 10) {
-                        Image(systemName: "person.crop.circle").foregroundStyle(Color.dcMuted)
+                        Avatar(person: r.person, size: 30)
                         Text(r.name).foregroundStyle(Color.dcInk)
                         Spacer()
                         if busy { ProgressView() } else { Image(systemName: "chevron.right").font(.caption).foregroundStyle(Color.dcMuted) }
@@ -486,6 +486,7 @@ struct NewDMView: View {
                         HStack(spacing: 10) {
                             Image(systemName: isSelected(r) ? "checkmark.circle.fill" : "circle")
                                 .foregroundStyle(isSelected(r) ? Color.dcAccent : Color.dcMuted)
+                            Avatar(person: r.person, size: 30)
                             Text(r.name).foregroundStyle(Color.dcInk)
                             Spacer()
                         }.contentShape(Rectangle())

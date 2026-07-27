@@ -77,10 +77,12 @@ enum Inline {
         return out
     }
 
-    /// Internal `#/…` links → `dcamp://route/<token>`; external links unchanged.
+    /// Internal links → `dcamp://route?t=<token>`; external links unchanged.
+    /// Handles both `#/…` SPA links AND the server's clean summary anchors
+    /// (`/dcamp/<board>/<slug>[/<cid>]`) so tapping a summary sentence opens the message.
     static func routeURL(_ href: String) -> URL? {
-        if href.hasPrefix("#/") {
-            let token = String(href.dropFirst(1)) // keep the leading "/"
+        if href.hasPrefix("#/") || href.hasPrefix("/dcamp/") || href.hasPrefix("/support/dcamp/") {
+            let token = href.hasPrefix("#/") ? String(href.dropFirst(1)) : href   // keep leading "/"
             let enc = token.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
             return URL(string: "dcamp://route?t=\(enc)")
         }

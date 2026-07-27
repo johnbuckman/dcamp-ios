@@ -115,7 +115,7 @@ actor DcampAPI {
 
     /// Toggle a reaction. `type` is "message" | "comment" | "chat".
     func boostToggle(type: String, id: Int, emoji: String) async throws {
-        _ = try await rawData("boost_toggle", ["type": type, "id": String(id), "content": emoji])
+        _ = try await rawData("boost_toggle", ["parent_type": type, "parent_id": String(id), "content": emoji])
     }
 
     // MARK: - Notifications

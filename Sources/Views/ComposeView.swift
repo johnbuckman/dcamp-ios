@@ -69,12 +69,13 @@ struct ComposeView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(T("Cancel")) { dismiss() }
+                    Button(T("Cancel")) { dismiss() }.tint(Color.dcInkSoft)
                 }
                 ToolbarItem(placement: .principal) { EmptyView() }
                 ToolbarItem(placement: .primaryAction) {
                     if posting { ProgressView() }
-                    else { Button(T("Post"), action: post).fontWeight(.semibold).disabled(!canPost) }
+                    // A clear green primary (was rendering as an odd dark pill on Catalyst).
+                    else { Button(T("Post"), action: post).buttonStyle(.borderedProminent).tint(Color.dcAccent).disabled(!canPost) }
                 }
                 ToolbarItemGroup(placement: .keyboard) {
                     PhotosPicker(selection: $photoItems, maxSelectionCount: 8, matching: .images) {

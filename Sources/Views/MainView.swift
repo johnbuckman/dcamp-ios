@@ -50,7 +50,8 @@ struct MainView: View {
             }
             lastNotifCount = new
         }
-        .sheet(isPresented: $showAccount) { SettingsView().environment(session).environment(router) }
+        // Settings is a full-screen page (like the web), not a small window overlay.
+        .fullScreenCover(isPresented: $showAccount) { SettingsView().environment(session).environment(router) }
         .sheet(isPresented: $showNotifs) {
             NotificationsView(store: notifStore) { router.threadID = $0 }
                 .environment(session).environment(router)
@@ -77,7 +78,7 @@ struct MainView: View {
         NavigationStack(path: $path) {
             ForumsHomeView(path: $path)
                 .navigationDestination(for: Dest.self) { dest in
-                    destination(dest)
+                    destination(dest).dcWideBack()
                 }
                 .dcampChrome(notifStore: notifStore, showNotifs: $showNotifs, showAccount: $showAccount)
         }
@@ -159,22 +160,28 @@ private struct DcampChrome: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(Color.dcBg)
-            .toolbarBackground(Color.dcBg, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    HStack(spacing: 7) {
-                        Image(systemName: "cup.and.saucer.fill").foregroundStyle(Color.dcInk)
-                        Text("dcamp").font(.system(size: 18, weight: .heavy)).foregroundStyle(Color.dcInk)
-                    }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    NotificationsBell(count: notifStore.unread) { showNotifs = true }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { showAccount = true } label: { Avatar(person: session.me, size: 28) }
-                }
+            // Custom top bar (not the system navigation toolbar): the brand must render
+            // FLAT — never inside the iOS 26 glass pill that reads as a tappable button
+            // (John: the top-left is not a button and must never look like one). The bell
+            // and avatar ARE buttons, so they keep their own affordance.
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) { topBar }
+    }
+
+    private var topBar: some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 7) {
+                Image("DcampMark").resizable().aspectRatio(contentMode: .fit).frame(height: 22)
+                Text("dcamp").font(.system(size: 18, weight: .heavy)).foregroundStyle(Color.dcInk)
             }
+            Spacer()
+            NotificationsBell(count: notifStore.unread) { showNotifs = true }
+            Button { showAccount = true } label: { Avatar(person: session.me, size: 28) }
+                .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color.dcBg)
     }
 }
 
@@ -184,12 +191,50 @@ private extension View {
     }
 }
 
+/// A wider back button (the iOS 26 system back was too small a tap target, esp.
+/// with a mouse on Catalyst). Swipe-back still works — see the UINavigationController
+/// extension below, which keeps the interactive pop gesture alive with the default
+/// button hidden.
+struct DCBackButton: View {
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        Button { dismiss() } label: {
+            Image(systemName: "chevron.backward")
+                .font(.system(size: 17, weight: .semibold))
+                .frame(width: 54, height: 34)
+                .contentShape(Rectangle())
+        }
+    }
+}
+
+extension View {
+    /// Replace the system back button with DCBackButton (a bigger tap target).
+    func dcWideBack() -> some View {
+        navigationBarBackButtonHidden(true)
+            .toolbar { ToolbarItem(placement: .topBarLeading) { DCBackButton() } }
+    }
+}
+
+// Keep the interactive swipe-back gesture working even though we hide the default
+// back button (navigationBarBackButtonHidden otherwise disables it). The count>1
+// guard stops it firing at the root. Standard, safe pattern.
+extension UINavigationController: @retroactive UIGestureRecognizerDelegate {
+    override open func viewDidLoad() {
+        super.viewDidLoad()
+        interactivePopGestureRecognizer?.delegate = self
+    }
+    public func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        viewControllers.count > 1
+    }
+}
+
 // MARK: - Forums home (card grid)
 
 struct ForumsHomeView: View {
     @Binding var path: [Dest]
     @Environment(SessionStore.self) private var session
     @State private var dmUnread = 0
+    @State private var chatStat: String? = nil
 
     private let cols = [GridItem(.adaptive(minimum: 300), spacing: 14)]
 
@@ -214,7 +259,8 @@ struct ForumsHomeView: View {
                 LazyVGrid(columns: cols, spacing: 14) {
                     Button { path.append(.chat) } label: {
                         OtherCard(icon: "bubble.left.and.bubble.right.fill", tint: Color.dcAccent,
-                                  title: "Chat Room", subtitle: "Live community chat for Decent espresso owners.")
+                                  title: "Chat Room", subtitle: "Live community chat for Decent espresso owners.",
+                                  stat: chatStat)
                     }.buttonStyle(.plain)
                     Button { path.append(.dms) } label: {
                         OtherCard(icon: "envelope.fill", tint: Color(red: 0.55, green: 0.36, blue: 0.86),
@@ -234,8 +280,15 @@ struct ForumsHomeView: View {
         .background(Color.dcBg)
         .scrollContentBackground(.hidden)
         .navigationBarTitleDisplayMode(.inline)
-        .task { dmUnread = await DcampAPI.shared.dmUnread() }
-        .refreshable { dmUnread = await DcampAPI.shared.dmUnread() }
+        .task { dmUnread = await DcampAPI.shared.dmUnread(); await loadChatStat() }
+        .refreshable { dmUnread = await DcampAPI.shared.dmUnread(); await loadChatStat() }
+    }
+
+    private func loadChatStat() async {
+        let info = await DcampAPI.shared.chatInfo()
+        chatStat = info.last24 > 0
+            ? "Messages: \(info.total) · \(info.last24) in the last 24h"
+            : "Messages: \(info.total)"
     }
 }
 
@@ -281,6 +334,7 @@ struct ForumCard: View {
 struct OtherCard: View {
     let icon: String; let tint: Color; let title: String; let subtitle: String
     var badge: Int = 0
+    var stat: String? = nil
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top) {
@@ -297,6 +351,7 @@ struct OtherCard: View {
             }
             Text(title).font(.system(size: 19, weight: .bold)).foregroundStyle(Color.dcInk)
             Text(subtitle).font(.system(size: 15)).foregroundStyle(Color.dcInkSoft)
+            if let stat { Text(stat).font(.system(size: 14)).foregroundStyle(Color.dcMuted).padding(.top, 2) }
         }
         .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
         .dcCard()

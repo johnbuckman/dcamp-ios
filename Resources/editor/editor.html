@@ -13,9 +13,43 @@
   /* drop the tools we don't support natively (file button handled by the app) */
   trix-toolbar .trix_button_group--file-tools,
   trix-toolbar .trix_button--icon-attach { display: none; }
-  trix-editor { border: none; min-height: 160px; padding: 12px 14px;
+  trix-editor { border: none; min-height: 44px; padding: 12px 14px;
     font: -apple-system-body; outline: none; }
   trix-editor:empty:not(:focus)::before { color: color-mix(in srgb, canvasText 40%, transparent); }
+  /* our injected toolbar buttons (HR + colour) match Trix's built-in buttons */
+  .trix-hr-btn, .dc-color-btn { font-size: 15px; line-height: 1; }
+  /* colour + highlight swatch popover, anchored just under the sticky toolbar */
+  .dc-color-pop { position: absolute; left: 4px; z-index: 10; display: none;
+    background: canvas; color: canvasText; border-radius: 10px; padding: 7px 9px;
+    border: 1px solid color-mix(in srgb, canvasText 20%, transparent);
+    box-shadow: 0 6px 20px rgba(0,0,0,.18); }
+  .dc-color-pop.open { display: block; }
+  .dc-color-pop .dc-row { display: flex; align-items: center; gap: 7px; margin: 3px 0; }
+  .dc-color-pop .dc-cue { width: 15px; text-align: center; font: 600 12px -apple-system; opacity: .55; }
+  .dc-sw { width: 20px; height: 20px; border-radius: 50%; cursor: pointer; padding: 0;
+    border: 1px solid color-mix(in srgb, canvasText 25%, transparent); }
+  .dc-color-pop .dc-clear { margin-left: 4px; font: 12px -apple-system; background: none;
+    border: 0; color: inherit; text-decoration: underline; cursor: pointer; padding: 2px 4px; }
+  .dc-color-btn svg, .trix-table-btn svg { vertical-align: middle; }
+  /* table-insert modal */
+  .dc-modal-back { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.28);
+    display: flex; align-items: center; justify-content: center; }
+  .dc-modal { background: canvas; color: canvasText; border-radius: 14px; padding: 16px;
+    width: min(92vw, 460px); box-shadow: 0 12px 40px rgba(0,0,0,.3); }
+  .dc-modal-title { font: 700 16px -apple-system; margin-bottom: 12px; }
+  .dc-modal-ctrls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+    font: 13px -apple-system; margin-bottom: 12px; }
+  .dc-stepper b { display: inline-block; min-width: 20px; text-align: center; }
+  .dc-stepper button { width: 26px; height: 26px; border-radius: 6px; margin: 0 3px;
+    border: 1px solid color-mix(in srgb, canvasText 22%, transparent); background: canvas; color: inherit; font-size: 15px; cursor: pointer; }
+  .dc-tgrid { display: grid; gap: 5px; margin-bottom: 14px; }
+  .dc-tcell { padding: 7px 8px; font: 14px -apple-system; border-radius: 6px;
+    border: 1px solid color-mix(in srgb, canvasText 20%, transparent); background: canvas; color: inherit; min-width: 0; }
+  .dc-tcell.dc-th { font-weight: 700; }
+  .dc-modal-act { display: flex; justify-content: flex-end; gap: 10px; }
+  .dc-btn { padding: 8px 16px; border-radius: 8px; font: 600 14px -apple-system; cursor: pointer;
+    border: 1px solid color-mix(in srgb, canvasText 20%, transparent); background: canvas; color: inherit; }
+  .dc-btn-primary { background: #16a34a; border-color: #16a34a; color: #fff; }
 </style>
 <form>
   <input id="content" type="hidden" name="content">
@@ -31,11 +65,25 @@
     }
   }
 
-  // Notify Swift as content changes (so it can enable/disable Post).
+  // Notify Swift as content changes (so it can enable/disable Post) and report the
+  // editor's natural content height so the inline composer can auto-grow (#9).
+  function contentHeight() {
+    // trix-editor's own scrollHeight = the rendered text height (excludes the toolbar).
+    return Math.ceil(editorEl.scrollHeight || 0);
+  }
   editorEl.addEventListener("trix-change", function () {
-    post({ type: "change", html: input.value, length: editorEl.editor.getDocument().toString().trim().length });
+    post({ type: "change", html: input.value, length: editorEl.editor.getDocument().toString().trim().length, height: contentHeight() });
   });
-  editorEl.addEventListener("trix-initialize", function () { post({ type: "ready" }); });
+  // In a TALL host (full-screen ComposeView) let the editor fill the space so the
+  // whole area is tappable; in a SHORT host (inline chat/DM composer) keep it compact
+  // (min-height 44) so the SwiftUI frame can auto-grow with the content (#9).
+  function fitEditor() {
+    var toolbarH = editorEl.toolbarElement ? editorEl.toolbarElement.offsetHeight : 0;
+    var avail = window.innerHeight - toolbarH;
+    editorEl.style.minHeight = (avail > 360 ? Math.max(44, avail - 16) : 44) + "px";
+  }
+  window.addEventListener("resize", fitEditor);
+  editorEl.addEventListener("trix-initialize", function () { post({ type: "ready" }); buildToolbar(); fitEditor(); post({ type: "change", html: input.value, length: 0, height: contentHeight() }); });
 
   // ⌘↵ / Ctrl+↵ submits (matches the web's bindCmdEnter).
   editorEl.addEventListener("keydown", function (e) {
@@ -74,6 +122,153 @@
     try { editorEl.editor.insertAttachment(new Trix.Attachment({ content: "<hr>", contentType: "application/vnd.trix.horizontal-rule" })); editorEl.editor.insertLineBreak(); } catch (e) {}
     editorEl.focus();
   };
+
+  // Insert a table via a compact editor modal.  Trix has no table model, so — like
+  // the web dcamp composer — it is stored as an opaque content-attachment
+  // (contentType application/vnd.dcamp.table + <table> html) that the native
+  // TrixTableView renders.
+  var TABLE_CT = "application/vnd.dcamp.table";
+  function tableHtml(rows, header) {
+    var h = "<table><tbody>";
+    for (var r = 0; r < rows.length; r++) {
+      h += "<tr>";
+      var tag = (header && r === 0) ? "th" : "td";
+      for (var c = 0; c < rows[r].length; c++) {
+        h += "<" + tag + ">" + esc(rows[r][c] || "").replace(/\n/g, "<br>") + "</" + tag + ">";
+      }
+      h += "</tr>";
+    }
+    return h + "</tbody></table>";
+  }
+  function openTableEditor() {
+    var rows = 2, cols = 2, header = true, data = [];
+    var back = document.createElement("div"); back.className = "dc-modal-back";
+    var box = document.createElement("div"); box.className = "dc-modal"; back.appendChild(box);
+    function readBack() {
+      var inps = box.querySelectorAll(".dc-tcell"); data = []; var k = 0;
+      for (var r = 0; r < rows; r++) { data[r] = []; for (var c = 0; c < cols; c++) { data[r][c] = inps[k] ? inps[k].value : ""; k++; } }
+    }
+    function render() {
+      box.innerHTML = "";
+      var title = document.createElement("div"); title.className = "dc-modal-title"; title.textContent = "Insert table"; box.appendChild(title);
+      var ctrls = document.createElement("div"); ctrls.className = "dc-modal-ctrls";
+      ctrls.innerHTML = '<label><input type="checkbox" class="dc-thead"' + (header ? " checked" : "") + "> Header row</label>";
+      var sr = document.createElement("span"); sr.className = "dc-stepper";
+      sr.innerHTML = 'Rows <button type="button" data-a="r-">–</button><b>' + rows + '</b><button type="button" data-a="r+">+</button>';
+      var sc = document.createElement("span"); sc.className = "dc-stepper";
+      sc.innerHTML = 'Cols <button type="button" data-a="c-">–</button><b>' + cols + '</b><button type="button" data-a="c+">+</button>';
+      ctrls.appendChild(sr); ctrls.appendChild(sc); box.appendChild(ctrls);
+      var grid = document.createElement("div"); grid.className = "dc-tgrid";
+      grid.style.gridTemplateColumns = "repeat(" + cols + ",1fr)";
+      for (var r = 0; r < rows; r++) for (var c = 0; c < cols; c++) {
+        var inp = document.createElement("input"); inp.className = "dc-tcell"; inp.type = "text";
+        inp.value = (data[r] && data[r][c] != null) ? data[r][c] : "";
+        if (header && r === 0) inp.classList.add("dc-th");
+        grid.appendChild(inp);
+      }
+      box.appendChild(grid);
+      var act = document.createElement("div"); act.className = "dc-modal-act";
+      var cancel = document.createElement("button"); cancel.type = "button"; cancel.className = "dc-btn"; cancel.textContent = "Cancel";
+      var ins = document.createElement("button"); ins.type = "button"; ins.className = "dc-btn dc-btn-primary"; ins.textContent = "Insert";
+      act.appendChild(cancel); act.appendChild(ins); box.appendChild(act);
+      box.querySelector(".dc-thead").addEventListener("change", function (e) { readBack(); header = e.target.checked; render(); });
+      Array.prototype.forEach.call(box.querySelectorAll("[data-a]"), function (b) {
+        b.addEventListener("click", function () {
+          readBack(); var a = b.getAttribute("data-a");
+          if (a === "r+") rows = Math.min(rows + 1, 12); else if (a === "r-") rows = Math.max(rows - 1, 1);
+          else if (a === "c+") cols = Math.min(cols + 1, 8); else if (a === "c-") cols = Math.max(cols - 1, 1);
+          render();
+        });
+      });
+      cancel.addEventListener("click", function () { if (back.parentNode) document.body.removeChild(back); editorEl.focus(); });
+      ins.addEventListener("click", function () {
+        readBack();
+        try { editorEl.editor.insertAttachment(new Trix.Attachment({ content: tableHtml(data, header), contentType: TABLE_CT })); editorEl.editor.insertLineBreak(); } catch (e) {}
+        if (back.parentNode) document.body.removeChild(back); editorEl.focus();
+      });
+    }
+    render(); document.body.appendChild(back);
+    var first = box.querySelector(".dc-tcell"); if (first) first.focus();
+  }
+
+  // Add the colour + HR controls INTO the Trix toolbar (matches the web dcamp
+  // composer), so every context — inline chat/DM AND full compose — gets them in
+  // the same place instead of a separate SwiftUI button row below the editor.
+  // Same swatch palettes as the web composer (dcamp.js FG_SWATCHES / BG_SWATCHES).
+  var FG_SWATCHES = ["#1c1c1c", "#6b6b6b", "#e11d48", "#ea580c", "#ca8a04", "#16a34a", "#0ea5e9", "#2563eb", "#7c3aed"];
+  var BG_SWATCHES = ["#fef08a", "#bbf7d0", "#bae6fd", "#fbcfe8", "#fecaca", "#e9d5ff", "#fed7aa", "#e5e7eb"];
+  // A monochrome paintbrush icon (the web uses Font Awesome fa-brush; the editor
+  // bundle ships no icon font, so this SVG matches the toolbar's other mono icons
+  // rather than the coloured 🖌 emoji John flagged).
+  var BRUSH_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3zM20.71 4.63l-1.34-1.34c-.39-.39-1.02-.39-1.41 0L9 12.25 11.75 15l8.96-8.96c.39-.39.39-1.02 0-1.41z"/></svg>';
+  var TABLE_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M3 3h18v18H3V3zm2 2v3h4V5H5zm6 0v3h8V5h-8zM5 10v3h4v-3H5zm6 0v3h8v-3h-8zM5 15v4h4v-4H5zm6 0v4h8v-4h-8z"/></svg>';
+  function buildToolbar() {
+    var tb = editorEl.toolbarElement;
+    if (!tb || tb.querySelector(".dc-color-btn")) return;   // once only
+    var blk = tb.querySelector(".trix-button-group--block-tools");
+    var txt = tb.querySelector(".trix-button-group--text-tools") || blk;
+
+    // — horizontal rule —
+    if (blk) {
+      var hr = document.createElement("button");
+      hr.type = "button"; hr.className = "trix-button trix-hr-btn";
+      hr.title = "Horizontal rule"; hr.tabIndex = -1; hr.textContent = "―";
+      hr.addEventListener("mousedown", function (e) { e.preventDefault(); dcampInsertHR(); });
+      blk.appendChild(hr);
+
+      // — insert table (web parity: trixAddTable) —
+      var tb2 = document.createElement("button");
+      tb2.type = "button"; tb2.className = "trix-button trix-table-btn";
+      tb2.title = "Insert table"; tb2.tabIndex = -1; tb2.innerHTML = TABLE_SVG;
+      tb2.addEventListener("mousedown", function (e) { e.preventDefault(); openTableEditor(); });
+      blk.appendChild(tb2);
+    }
+    if (!txt) return;
+
+    // — text colour & highlight —
+    var cb = document.createElement("button");
+    cb.type = "button"; cb.className = "trix-button dc-color-btn";
+    cb.title = "Text colour & highlight"; cb.tabIndex = -1; cb.innerHTML = BRUSH_SVG;
+    txt.appendChild(cb);
+
+    var pop = document.createElement("div");
+    pop.className = "dc-color-pop";
+    function row(cue, hexes, chan) {
+      var r = document.createElement("div"); r.className = "dc-row";
+      var c = document.createElement("span"); c.className = "dc-cue"; c.textContent = cue; r.appendChild(c);
+      hexes.forEach(function (hex) {
+        var s = document.createElement("button");
+        s.type = "button"; s.className = "dc-sw"; s.style.background = hex; s.title = hex;
+        s.addEventListener("mousedown", function (e) {
+          e.preventDefault();
+          if (chan === "fg") dcampSetColor(hex, null); else dcampSetColor(null, hex);
+          pop.classList.remove("open");
+        });
+        r.appendChild(s);
+      });
+      if (chan === "bg") {
+        var clr = document.createElement("button");
+        clr.type = "button"; clr.className = "dc-clear"; clr.textContent = "Clear";
+        clr.addEventListener("mousedown", function (e) { e.preventDefault(); dcampClearColor(); pop.classList.remove("open"); });
+        r.appendChild(clr);
+      }
+      return r;
+    }
+    pop.appendChild(row("A", FG_SWATCHES, "fg"));    // "A" cues text colour
+    pop.appendChild(row("▉", BG_SWATCHES, "bg"));    // filled block cues highlight
+    document.body.appendChild(pop);
+
+    cb.addEventListener("mousedown", function (e) {
+      e.preventDefault();
+      var open = !pop.classList.contains("open");
+      // anchor just under the toolbar (short editor → don't risk clipping off the button's x)
+      pop.style.top = (tb.offsetHeight + 2) + "px";
+      pop.classList.toggle("open", open);
+    });
+    document.addEventListener("mousedown", function (e) {
+      if (e.target !== cb && !pop.contains(e.target)) pop.classList.remove("open");
+    });
+  }
 
   // --- markdown auto-format as you type (ported from dcamp.js attachMarkdown) ---
   // When the user completes a markdown pattern, swap the raw markdown for real

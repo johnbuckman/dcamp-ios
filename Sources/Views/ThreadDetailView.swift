@@ -77,8 +77,13 @@ struct ThreadDetailView: View {
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 if siblingIndex != nil {
-                    Button { if let p = prevSibling { goto(p) } } label: { Image(systemName: "chevron.up") }.disabled(prevSibling == nil)
-                    Button { if let n = nextSibling { goto(n) } } label: { Image(systemName: "chevron.down") }.disabled(nextSibling == nil)
+                    // Wider tap targets (John: the prev/next buttons were too small).
+                    Button { if let p = prevSibling { goto(p) } } label: {
+                        Image(systemName: "chevron.up").frame(width: 44, height: 30).contentShape(Rectangle())
+                    }.disabled(prevSibling == nil)
+                    Button { if let n = nextSibling { goto(n) } } label: {
+                        Image(systemName: "chevron.down").frame(width: 44, height: 30).contentShape(Rectangle())
+                    }.disabled(nextSibling == nil)
                 }
             }
         }

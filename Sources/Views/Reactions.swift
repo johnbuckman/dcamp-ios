@@ -36,8 +36,12 @@ struct BoostBar: View {
             }
             .buttonStyle(.plain)
         }
-        .sheet(isPresented: $picking) {
+        // Anchored popover (like the web's pickEmoji), NOT a sheet — on Mac Catalyst
+        // the sheet's Cancel didn't respond until the mouse moved. A popover dismisses
+        // on outside tap, so there's no Cancel button to get stuck.
+        .popover(isPresented: $picking, arrowEdge: .bottom) {
             EmojiPicker { emoji in picking = false; toggle(emoji) }
+                .presentationCompactAdaptation(.popover)
         }
     }
 
@@ -46,33 +50,73 @@ struct BoostBar: View {
     }
 }
 
-/// A compact emoji picker (curated common reactions + a few categories).
+/// Emoji reaction picker — mirrors the web's designed picker (`pickEmoji`): a search
+/// field over category-grouped emoji, in an anchored popover. Searching flattens to
+/// keyword-matched results; otherwise the categories are browsable (Boosts first,
+/// espresso/tea leading the food group), matching `window.DCAMP_EMOJI`.
 struct EmojiPicker: View {
     var onPick: (String) -> Void
-    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
 
-    private let emojis: [String] = [
-        "👍","❤️","😂","🎉","🙌","🔥","👏","💯","😍","🤔","😮","😢",
-        "🙏","☕️","👌","✅","💪","🚀","⭐️","😅","😉","🤩","🥰","😎",
-        "👀","🤯","😴","🤤","🫠","🤗","🙃","😬","🤙","✌️","🤝","💡",
-        "☕","🫖","⚡️","🧠","📈","🛠️","🧪","🎯","🥇","🍫","🍩","🧊",
+    // (emoji, search keywords) grouped by category. Boosts = the web's quick favourites.
+    private static let categories: [(String, [(String, String)])] = [
+        ("Boosts", [("👍","thumbs up like yes good"),("🎉","party tada celebrate"),("❤️","heart love"),("😄","smile happy"),("🙏","thanks pray please"),("🔥","fire hot lit"),("👀","eyes look watching"),("🚀","rocket launch ship"),("💯","hundred perfect"),("😮","wow surprised"),("👏","clap applause"),("✅","check done yes"),("🙌","raise hands praise"),("💪","strong muscle")]),
+        ("Smileys", [("😀","grin happy"),("😊","blush smile"),("🙂","slight smile"),("😉","wink"),("😍","heart eyes love"),("🥰","adore love"),("😎","cool sunglasses"),("🤩","star struck"),("🤔","thinking hmm"),("😅","sweat laugh"),("😂","laugh cry"),("🤣","rofl"),("🙃","upside down"),("😴","sleep tired"),("😢","sad cry"),("😭","sob cry"),("🥳","party celebrate"),("🤯","mind blown"),("🫠","melting"),("🤗","hug")]),
+        ("Gestures", [("👎","thumbs down no"),("👌","ok perfect"),("✌️","peace victory"),("🤙","call shaka"),("🤞","fingers crossed hope"),("👋","wave hi bye"),("🤝","handshake deal"),("👉","point"),("✍️","write note")]),
+        ("Coffee & food", [("☕","coffee espresso"),("🍵","tea matcha"),("🫖","teapot"),("🧊","ice cold"),("🍫","chocolate"),("🍩","donut"),("🥛","milk"),("🍪","cookie"),("🧁","cupcake"),("🥐","croissant")]),
+        ("Objects", [("⭐️","star favorite"),("⚡️","lightning fast power"),("💡","idea bulb"),("🧠","brain smart"),("📈","chart up growth"),("🛠️","tools fix"),("🧪","test experiment"),("🎯","target goal"),("🥇","gold medal first"),("🔧","wrench fix"),("⚙️","gear settings"),("🔋","battery power")]),
+        ("Symbols", [("❌","x no wrong"),("❓","question"),("❗","exclaim important"),("➕","plus add"),("♻️","recycle"),("⚠️","warning"),("🔔","bell notify"),("💬","comment chat"),("🏆","trophy win")]),
     ]
-    private let cols = Array(repeating: GridItem(.flexible()), count: 6)
+
+    private let cols = Array(repeating: GridItem(.flexible(), spacing: 6), count: 8)
+
+    private var matches: [String] {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else { return [] }
+        var out: [String] = []
+        for (_, items) in Self.categories {
+            for (e, kw) in items where kw.split(separator: " ").contains(where: { $0.hasPrefix(q) }) { out.append(e) }
+        }
+        return out
+    }
 
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass").font(.system(size: 13)).foregroundStyle(Color.dcMuted)
+                TextField(T("Search emoji"), text: $query).textFieldStyle(.plain).font(.system(size: 15))
+            }
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .background(Color.dcPanel, in: RoundedRectangle(cornerRadius: 8))
+
             ScrollView {
-                LazyVGrid(columns: cols, spacing: 14) {
-                    ForEach(emojis, id: \.self) { e in
-                        Button { onPick(e); dismiss() } label: { Text(e).font(.system(size: 30)) }
+                if query.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        ForEach(Self.categories, id: \.0) { name, items in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(name.uppercased()).font(.system(size: 11, weight: .bold)).foregroundStyle(Color.dcMuted)
+                                LazyVGrid(columns: cols, spacing: 6) {
+                                    ForEach(items, id: \.0) { e, _ in emojiButton(e) }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    LazyVGrid(columns: cols, spacing: 6) {
+                        ForEach(matches, id: \.self) { emojiButton($0) }
                     }
                 }
-                .padding()
             }
-            .background(Color.dcBg)
-            .navigationTitle(T("React")).navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(T("Cancel")) { dismiss() } } }
         }
-        .presentationDetents([.medium])
+        .padding(12)
+        .frame(width: 320, height: 380)
+        .background(Color.dcBg)
+    }
+
+    private func emojiButton(_ e: String) -> some View {
+        Button { onPick(e) } label: {
+            Text(e).font(.system(size: 24)).frame(width: 34, height: 34)
+        }
+        .buttonStyle(.plain)
     }
 }

@@ -111,14 +111,39 @@ struct MessageRow: Codable, Identifiable, Hashable {
     var author: Person?
     var preview: String?
     var bodyTr: String?
-    var thumb: String?
-    var recentComment: String?
+    // The server sends these as JSON OBJECTS (or null) — NOT strings. Typing them
+    // as String? made Codable throw on any row with a thumbnail/recent comment,
+    // which silently emptied the WHOLE board ("No threads yet"). See MessageThumb /
+    // RecentComment below.
+    var thumb: MessageThumb?
+    var recentComment: RecentComment?
 
     var isPinned: Bool { (pinned ?? 0) != 0 }
     var displaySubject: String { (subjectTr?.isEmpty == false ? subjectTr! : subject) }
     /// Body preview, translated when available.
     var displayPreview: String { (bodyTr?.isEmpty == false ? bodyTr! : (preview ?? "")) }
-    var thumbURL: URL? { Person.absURL(thumb) }
+    var thumbURL: URL? { Person.absURL(thumb?.src) }
+    /// Recent-comment preview, translated when available.
+    var recentCommentText: String? {
+        guard let rc = recentComment else { return nil }
+        return (rc.bodyTr?.isEmpty == false ? rc.bodyTr : rc.text)
+    }
+}
+
+/// A board-row thumbnail. Server shape: {"type":"image|youtube|…","src":"…"} or null.
+struct MessageThumb: Codable, Hashable {
+    var type: String?
+    var src: String?
+}
+
+/// The most-recent comment shown under a board row. Server shape:
+/// {"id":…,"author":"…","text":"…","lang":"…","body_tr":"…"} or null.
+struct RecentComment: Codable, Hashable {
+    var id: Int?
+    var author: String?
+    var text: String?
+    var lang: String?
+    var bodyTr: String?
 }
 
 struct MessagesPage: Codable {
@@ -357,6 +382,21 @@ enum DcampRoute {
         return Int(digits)
     }
 
+    /// Split a clean message URL "/dcamp/<board>/<slug>[/<cid>]" (or
+    /// "/support/dcamp/...") into (board slug, message slug). Used to resolve the
+    /// server's summary anchors to a message id via the `resolve_msg` API.
+    static func cleanMsgParts(from route: String?) -> (board: String, slug: String)? {
+        guard let route else { return nil }
+        // Drop a leading "/support" and the "/dcamp" prefix, keep the rest.
+        var path = route
+        if path.hasPrefix("/support") { path.removeFirst("/support".count) }
+        guard path.hasPrefix("/dcamp/") else { return nil }
+        let parts = path.split(separator: "/").map(String.init).filter { !$0.isEmpty }
+        // ["dcamp", <board>, <slug>, <cid?>]
+        guard parts.count >= 3, parts[0] == "dcamp" else { return nil }
+        return (parts[1], parts[2])
+    }
+
     /// DM conversation id from a "/dm/123" or "/pings/123" route.
     static func dmID(from route: String?) -> Int? {
         guard let route else { return nil }
@@ -441,6 +481,11 @@ struct Recipient: Codable, Identifiable {
     let id: Int
     var name: String = ""
     var email: String?
+    var avatarColor: String?
+    var avatarImg: String?
+    var initials: String?
+    /// A display-only Person so recipient rows can show the same Avatar as everywhere else.
+    var person: Person { Person(id: id, name: name, avatarColor: avatarColor, avatarImg: avatarImg, initials: initials) }
 }
 
 struct RecipientsResult: Codable {

@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 /// My settings — profile, location, notification prefs, summaries-by-email,
 /// muted people, Basecamp status, and account actions. Mirrors the web settings.
@@ -9,6 +10,9 @@ struct SettingsView: View {
 
     @State private var name = ""
     @State private var about = ""
+    @State private var avatarImg = ""            // current avatar URL (updated by the picker)
+    @State private var avatarItem: PhotosPickerItem?
+    @State private var uploadingAvatar = false
     @State private var city = ""
     @State private var country = ""
     @State private var showLocation = true
@@ -64,15 +68,49 @@ struct SettingsView: View {
 
     private var profileSection: some View {
         Section(T("Profile")) {
+            HStack(spacing: 14) {
+                avatarPreview
+                PhotosPicker(selection: $avatarItem, matching: .images) {
+                    HStack(spacing: 6) {
+                        if uploadingAvatar { ProgressView() }
+                        Text(uploadingAvatar ? T("Uploading…") : T("Change photo"))
+                    }
+                }
+                .disabled(uploadingAvatar)
+            }
             TextField(T("Display name"), text: $name)
             TextField(T("About you"), text: $about, axis: .vertical).lineLimit(2...4)
             Button {
                 savingProfile = true
-                Task { await api.settingsSave(name: name, about: about, avatarImg: session.me?.avatarImg ?? "", showLocation: showLocation); await session.refresh(); savingProfile = false }
+                Task { await api.settingsSave(name: name, about: about, avatarImg: avatarImg, showLocation: showLocation); await session.refresh(); savingProfile = false }
             } label: {
                 HStack { if savingProfile { ProgressView() }; Text(T("Save profile")) }
             }
         }
+        .onChange(of: avatarItem) { _, item in if let item { Task { await uploadAvatar(item) } } }
+    }
+
+    @ViewBuilder private var avatarPreview: some View {
+        // Show the just-picked/current avatar. Reuse Avatar via a display-only Person.
+        Avatar(person: Person(id: session.me?.id ?? 0, name: name.isEmpty ? (session.me?.name ?? "") : name,
+                              avatarColor: session.me?.avatarColor, avatarImg: avatarImg.isEmpty ? nil : avatarImg,
+                              initials: session.me?.initials), size: 56)
+    }
+
+    /// Upload the picked image, point the profile at it, and persist immediately
+    /// (the web treats avatar_img as an overwrite, so we save the real new URL).
+    private func uploadAvatar(_ item: PhotosPickerItem) async {
+        uploadingAvatar = true
+        defer { uploadingAvatar = false }
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self) else { return }
+            let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
+            let mime = item.supportedContentTypes.first?.preferredMIMEType ?? "image/jpeg"
+            let url = try await api.uploadImage(data, filename: "avatar.\(ext)", mime: mime)
+            avatarImg = url
+            await api.settingsSave(name: name, about: about, avatarImg: avatarImg, showLocation: showLocation)
+            await session.refresh()
+        } catch { }
     }
 
     private var appearanceSection: some View {
@@ -111,7 +149,7 @@ struct SettingsView: View {
             HStack { Text(T("City")); Spacer(); TextField(T("City"), text: $city).multilineTextAlignment(.trailing) }
             HStack { Text(T("Country")); Spacer(); TextField(T("US"), text: $country).multilineTextAlignment(.trailing).frame(width: 80) }
             Toggle(T("Show my city & country on my profile"), isOn: $showLocation)
-            Button(T("Save location")) { Task { await api.locationSave(country: country, city: city); await api.settingsSave(name: name, about: about, avatarImg: session.me?.avatarImg ?? "", showLocation: showLocation) } }
+            Button(T("Save location")) { Task { await api.locationSave(country: country, city: city); await api.settingsSave(name: name, about: about, avatarImg: avatarImg, showLocation: showLocation) } }
         }
     }
 
@@ -195,6 +233,7 @@ struct SettingsView: View {
         guard !loaded else { return }
         name = session.me?.name ?? ""
         about = session.me?.about ?? ""
+        avatarImg = session.me?.avatarImg ?? ""
         let loc = await api.locationGet()
         city = loc.city ?? ""; country = loc.countryCode ?? ""; showLocation = (loc.showLocation ?? 1) != 0
         let prefs = (try? await api.notifPrefsGet()) ?? NotifPrefs()
