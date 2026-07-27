@@ -327,7 +327,7 @@ struct ForumCard: View {
                 Text("Messages: \(n)").font(.system(size: 14)).foregroundStyle(Color.dcMuted).padding(.top, 2)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 180, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: 180, maxHeight: .infinity, alignment: .topLeading)
         .dcCard()
     }
 }
@@ -354,7 +354,7 @@ struct OtherCard: View {
             Text(subtitle).font(.system(size: 15)).foregroundStyle(Color.dcInkSoft)
             if let stat { Text(stat).font(.system(size: 14)).foregroundStyle(Color.dcMuted).padding(.top, 2) }
         }
-        .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: 120, maxHeight: .infinity, alignment: .topLeading)
         .dcCard()
     }
 }

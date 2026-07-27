@@ -13,6 +13,7 @@ struct SettingsView: View {
     @State private var avatarImg = ""            // current avatar URL (updated by the picker)
     @State private var avatarItem: PhotosPickerItem?
     @State private var uploadingAvatar = false
+    @State private var avatarError: String?
     @State private var city = ""
     @State private var country = ""
     @State private var showLocation = true
@@ -62,6 +63,9 @@ struct SettingsView: View {
                 Button(T("Close account"), role: .destructive) { Task { await api.accountClose(); await session.logout(); dismiss() } }
                 Button(T("Cancel"), role: .cancel) {}
             } message: { Text(T("Your posts stay, but you’re removed from search, @mention and the member list. Logging in again reopens it.")) }
+            .alert(T("Couldn’t update your photo"), isPresented: Binding(get: { avatarError != nil }, set: { if !$0 { avatarError = nil } })) {
+                Button(T("OK")) { avatarError = nil }
+            } message: { Text(avatarError ?? "") }
             .sheet(isPresented: $showHelp) { HelpView() }
         }
     }
@@ -103,14 +107,20 @@ struct SettingsView: View {
         uploadingAvatar = true
         defer { uploadingAvatar = false }
         do {
-            guard let data = try await item.loadTransferable(type: Data.self) else { return }
+            guard let data = try await item.loadTransferable(type: Data.self) else {
+                avatarError = "Couldn’t read that photo. Try a different one."; return
+            }
             let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
             let mime = item.supportedContentTypes.first?.preferredMIMEType ?? "image/jpeg"
             let url = try await api.uploadImage(data, filename: "avatar.\(ext)", mime: mime)
             avatarImg = url
             await api.settingsSave(name: name, about: about, avatarImg: avatarImg, showLocation: showLocation)
             await session.refresh()
-        } catch { }
+        } catch {
+            // Surface the reason instead of failing silently (John: "avatar change
+            // doesn't work" — with no error it's impossible to tell what went wrong).
+            avatarError = (error as? DcampAPI.APIError)?.message ?? error.localizedDescription
+        }
     }
 
     private var appearanceSection: some View {

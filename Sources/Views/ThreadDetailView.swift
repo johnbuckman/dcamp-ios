@@ -20,6 +20,7 @@ struct ThreadDetailView: View {
     @State private var editingComment: Comment?
     @State private var composerModel = ComposerModel()
     @State private var scrollTick = 0
+    @State private var prevComposerHeight: CGFloat = 9999   // start high so the initial load never counts as growth
     @State private var pendingDeleteMessage: MessageDetail?
     @State private var pendingDeleteComment: Comment?
     @State private var offtopicCommentID: Int?
@@ -94,6 +95,13 @@ struct ThreadDetailView: View {
             ComposeView(mode: .editComment(comment: c)) { _ in Task { await load() } }
         }
         .onChange(of: scrollTick) { withAnimation { proxy.scrollTo("composer", anchor: .bottom) } }
+        // As the bottom composer grows while typing, keep it (and the cursor) on screen
+        // instead of letting it run off the bottom of the page. Only reacts to GROWTH,
+        // so opening the thread never yanks the view down to the composer.
+        .onChange(of: composerModel.contentHeight) { _, h in
+            if h > prevComposerHeight + 1 { withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo("composer", anchor: .bottom) } }
+            prevComposerHeight = h
+        }
         .confirmationDialog(T("Delete this post?"), isPresented: Binding(get: { pendingDeleteMessage != nil }, set: { if !$0 { pendingDeleteMessage = nil } }), titleVisibility: .visible) {
             Button(T("Delete"), role: .destructive) { if let m = pendingDeleteMessage { pendingDeleteMessage = nil; deleteMessage(m) } }
             Button(T("Cancel"), role: .cancel) { pendingDeleteMessage = nil }

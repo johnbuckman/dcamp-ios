@@ -23,7 +23,10 @@ actor DcampAPI {
         cfg.httpShouldSetCookies = false
         cfg.httpCookieAcceptPolicy = .never
         cfg.waitsForConnectivity = false
-        cfg.timeoutIntervalForRequest = 20
+        // Upper bound only — each request sets its own timeoutInterval below (the
+        // shorter of the two wins), so normal calls stay snappy while AI actions get
+        // the full window.
+        cfg.timeoutIntervalForRequest = 120
         session = URLSession(configuration: cfg)
 
         decoder = JSONDecoder()
@@ -224,6 +227,7 @@ actor DcampAPI {
         let boundary = "dcamp-\(UUID().uuidString)"
         var req = URLRequest(url: AppConfig.apiURL)
         req.httpMethod = "POST"
+        req.timeoutInterval = 120   // photos can be large; don't cut the upload short
         if let token { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
 
@@ -256,6 +260,14 @@ actor DcampAPI {
 
     // MARK: - Transport
 
+    /// Server-side-AI actions that may take far longer than a normal request.
+    static let slowActions: Set<String> = [
+        "forum_summary", "home_summary", "thread_summary", "chat_summary",
+        "activity_summary", "summary_email_sample",
+        "subject_check", "pre_answer", "offtopic_suggest", "offtopic_move",
+        "derek_search_start", "derek_search_poll",
+    ]
+
     /// POST the form, validate HTTP + the `{ok:false,error}` envelope, return body Data.
     func rawData(_ action: String, _ params: [String: String]) async throws -> Data {
         var req = URLRequest(url: AppConfig.apiURL)
@@ -267,6 +279,11 @@ actor DcampAPI {
         if let lang = UserDefaults.standard.string(forKey: "dcamp_lang"), !lang.isEmpty {
             req.setValue(lang, forHTTPHeaderField: "X-Dcamp-Lang")
         }
+
+        // AI-backed actions generate on the server (summaries, pre-post checks, Derek)
+        // and can take 30–60s; the normal 20s timeout would kill them mid-think and
+        // leave an empty result (blank summary). Give those the long window.
+        req.timeoutInterval = Self.slowActions.contains(action) ? 120 : 20
 
         var form = params
         form["action"] = action

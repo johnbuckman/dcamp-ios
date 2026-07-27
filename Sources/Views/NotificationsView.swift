@@ -31,7 +31,11 @@ struct NotificationsView: View {
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(T("Done")) { dismiss() }
+                    // Plain green text, not the iOS 26 prominent black-pill glass button.
+                    Button { dismiss() } label: {
+                        Text(T("Done")).fontWeight(.semibold).foregroundStyle(Color.dcAccent)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }

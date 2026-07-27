@@ -37,7 +37,9 @@ struct ThreadListView: View {
         }
         .background(Color.dcBg)
         .scrollContentBackground(.hidden)
-        .navigationTitle(board.name)
+        // No centered nav-bar title — the board name already shows in the content
+        // header (icon + name), so a nav title would duplicate it.
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $composing) {
             ComposeView(mode: .newThread(board: board)) { newID in
