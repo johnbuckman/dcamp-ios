@@ -15,9 +15,9 @@ enum AppConfig {
 
     /// dcamp's JSON API endpoint (`/support/dcamp/api.adp`).
     ///
-    /// DEV: pointed at the local NaviServer. Flip `useLocalDev` to false (or edit
-    /// `prodAPIURL`) for TestFlight / App Store builds.
-    static let useLocalDev = true
+    /// Production (decentespresso.com) is the default. Flip to `true` ONLY to run
+    /// against a local NaviServer at localhost:8000 for dev.
+    static let useLocalDev = false
     static let localAPIURL = URL(string: "http://localhost:8000/support/dcamp/api.adp")!
     static let prodAPIURL  = URL(string: "https://decentespresso.com/support/dcamp/api.adp")!
     static var apiURL: URL { useLocalDev ? localAPIURL : prodAPIURL }
