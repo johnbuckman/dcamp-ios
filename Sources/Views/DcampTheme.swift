@@ -50,7 +50,9 @@ enum ThemeMode: String, CaseIterable, Identifiable {
 
 enum DC {
     static let radius: CGFloat = 14
-    static let maxContentWidth: CGFloat = 900   // centered column like the web
+    // The web's central column (dcamp.css `--maxw`): content is fluid up to this and
+    // then centers, so a wider window uses the space instead of stranding it in margins.
+    static let maxContentWidth: CGFloat = 1560
 }
 
 // MARK: - Card

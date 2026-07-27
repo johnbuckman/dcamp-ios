@@ -236,7 +236,8 @@ struct ForumsHomeView: View {
     @State private var dmUnread = 0
     @State private var chatStat: String? = nil
 
-    private let cols = [GridItem(.adaptive(minimum: 300), spacing: 14)]
+    // Matches the web forums grid: repeat(auto-fill, minmax(240px, 1fr)).
+    private let cols = [GridItem(.adaptive(minimum: 240), spacing: 14)]
 
     var body: some View {
         ScrollView {
