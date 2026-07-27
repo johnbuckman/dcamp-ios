@@ -17,7 +17,6 @@ struct MainView: View {
     @Environment(\.horizontalSizeClass) private var hSize
 
     @State private var path: [Dest] = []
-    @State private var railSelection: Dest? = nil      // iPad/regular sidebar selection (drives the detail root)
     @State private var showAccount = false
     @State private var showNotifs = false
     @State private var notifStore = NotificationsStore()
@@ -26,12 +25,12 @@ struct MainView: View {
     @State private var showHelp = false
 
     var body: some View {
-        Group {
-            if hSize == .regular {
-                splitLayout          // iPad / wide Catalyst: sidebar + detail (+ pinned-summary inspector)
-            } else {
-                stack                // iPhone / narrow: single-column card-grid home
+        HStack(spacing: 0) {
+            if hSize == .regular && summaryPin.visible {
+                SummarySidebarView().frame(width: 340)
+                Divider()
             }
+            stack
         }
         .tint(Color.dcAccent)
         .overlay(alignment: .top) {
@@ -83,53 +82,6 @@ struct MainView: View {
                 }
                 .dcampChrome(notifStore: notifStore, showNotifs: $showNotifs, showAccount: $showAccount)
         }
-    }
-
-    // MARK: - iPad / wide-Catalyst two-pane
-
-    private var splitLayout: some View {
-        NavigationSplitView {
-            ForumRail(selection: $railSelection, notifStore: notifStore,
-                      showNotifs: $showNotifs, showAccount: $showAccount)
-                .navigationSplitViewColumnWidth(min: 240, ideal: 300, max: 380)
-        } detail: {
-            NavigationStack(path: $path) {
-                detailRoot
-                    .navigationDestination(for: Dest.self) { dest in
-                        destination(dest).dcWideBack()
-                    }
-            }
-            .inspector(isPresented: summaryVisible) {
-                SummarySidebarView()
-                    .inspectorColumnWidth(min: 280, ideal: 340, max: 440)
-            }
-        }
-        .navigationSplitViewStyle(.balanced)
-        // Selecting a different forum/room replaces the detail root — drop any deeper push.
-        .onChange(of: railSelection) { _, _ in path.removeAll() }
-        // Land on a forum (not an empty pane) when the split first appears.
-        .task { if railSelection == nil { railSelection = session.boards.first.map { Dest.board($0.id) } } }
-    }
-
-    /// The detail column's root, driven by the sidebar selection. Deeper navigation
-    /// (thread, dm) is pushed onto `path` on top of this.
-    @ViewBuilder private var detailRoot: some View {
-        switch railSelection {
-        case .board(let id):
-            if let board = session.boards.first(where: { $0.id == id }) {
-                ThreadListView(board: board, path: $path)
-            } else { ForumWelcome() }
-        case .chat: ChatView()
-        case .dms: DMListView(path: $path)
-        case .find: FindForumsView()
-        case .search: SearchView(path: $path)
-        default: ForumWelcome()
-        }
-    }
-
-    /// Two-way binding so dismissing the inspector also unpins the summary.
-    private var summaryVisible: Binding<Bool> {
-        Binding(get: { summaryPin.visible }, set: { if !$0 { summaryPin.clear() } })
     }
 
     @ViewBuilder private func destination(_ dest: Dest) -> some View {
@@ -403,71 +355,6 @@ struct OtherCard: View {
         }
         .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
         .dcCard()
-    }
-}
-
-// MARK: - iPad / wide-Catalyst sidebar
-
-/// The forums sidebar for the two-pane (regular-width) layout: forums + Other,
-/// selectable to drive the detail column, with the brand + account controls on top.
-struct ForumRail: View {
-    @Binding var selection: Dest?
-    let notifStore: NotificationsStore
-    @Binding var showNotifs: Bool
-    @Binding var showAccount: Bool
-    @Environment(SessionStore.self) private var session
-    @State private var dmUnread = 0
-
-    var body: some View {
-        List(selection: $selection) {
-            Section {
-                ForEach(session.boards) { b in
-                    Label(b.name, systemImage: ForumStyle.icon(b)).tag(Dest.board(b.id))
-                }
-            } header: { Text(T("Forums")) }
-            Section {
-                Label(T("Chat Room"), systemImage: "bubble.left.and.bubble.right.fill").tag(Dest.chat)
-                HStack {
-                    Label(T("Direct Messages"), systemImage: "envelope.fill")
-                    if dmUnread > 0 {
-                        Spacer()
-                        Text("\(dmUnread)").font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
-                            .padding(.horizontal, 6).padding(.vertical, 1).background(Color.red, in: Capsule())
-                    }
-                }.tag(Dest.dms)
-                if session.showRegions || session.showRoasters {
-                    Label(T("Find forums"), systemImage: "map.fill").tag(Dest.find)
-                }
-            } header: { Text(T("Other")) }
-        }
-        .navigationTitle("dcamp")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Image("DcampMark").resizable().aspectRatio(contentMode: .fit).frame(height: 20)
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                NotificationsBell(count: notifStore.unread) { showNotifs = true }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { showAccount = true } label: { Avatar(person: session.me, size: 26) }.buttonStyle(.plain)
-            }
-        }
-        .task { dmUnread = await DcampAPI.shared.dmUnread() }
-        .refreshable { dmUnread = await DcampAPI.shared.dmUnread() }
-    }
-}
-
-/// Detail placeholder shown before a forum is chosen (regular width only).
-struct ForumWelcome: View {
-    var body: some View {
-        VStack(spacing: 14) {
-            Image("DcampMark").resizable().aspectRatio(contentMode: .fit).frame(height: 56).opacity(0.9)
-            Text(T("Select a forum")).font(.system(size: 18, weight: .semibold)).foregroundStyle(Color.dcMuted)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.dcBg)
-        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
