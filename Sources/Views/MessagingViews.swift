@@ -90,10 +90,11 @@ final class ChatStore {
         lines = byId.values.sorted { $0.id < $1.id }
         lastID = max(lastID, r.lastId ?? lines.last?.id ?? lastID)
     }
-    func send(html: String) async {
-        guard !PlainText.strip(html).isEmpty else { return }
-        try? await api.chatPost(bodyHTML: html)
-        await reload()
+    var sendError: String?
+    func send(html: String) async -> Bool {
+        guard !PlainText.strip(html).isEmpty else { return false }
+        do { try await api.chatPost(bodyHTML: html); await reload(); return true }
+        catch { sendError = (error as? DcampAPI.APIError)?.message ?? error.localizedDescription; return false }
     }
 }
 
@@ -101,6 +102,7 @@ struct ChatView: View {
     @Environment(SessionStore.self) private var session
     @State private var store = ChatStore()
     @State private var editingLine: ChatLine?
+    @State private var didInitialScroll = false
     private let api = DcampAPI.shared
 
     private func copyChatLink(_ id: Int) {
@@ -138,8 +140,16 @@ struct ChatView: View {
                     .padding(18)
                     .dcColumn()
                 }
+                // Open directly at the most recent line (no scroll from the top);
+                // only animate to the bottom for NEW lines after the first fill.
+                .defaultScrollAnchor(.bottom)
                 .onChange(of: store.lines.count) {
-                    if let last = store.lines.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } }
+                    guard let last = store.lines.last else { return }
+                    if didInitialScroll {
+                        withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                    } else {
+                        didInitialScroll = true
+                    }
                 }
             }
             if session.canPost {
@@ -158,6 +168,9 @@ struct ChatView: View {
         .background(Color.dcBg)
         .navigationTitle(T("Chat Room"))
         .navigationBarTitleDisplayMode(.inline)
+        .alert(T("Couldn’t send"), isPresented: Binding(get: { store.sendError != nil }, set: { if !$0 { store.sendError = nil } })) {
+            Button(T("OK")) { store.sendError = nil }
+        } message: { Text(store.sendError ?? "") }
         .sheet(item: $editingLine) { line in
             ComposeView(mode: .editChat(line: line)) { _ in Task { await store.reload() } }
         }
@@ -171,14 +184,33 @@ struct ChatView: View {
 struct DMListView: View {
     @Binding var path: [Dest]
     @Environment(\.horizontalSizeClass) private var hSize
+    @Environment(SessionStore.self) private var session
     @State private var convos: [DMConversation] = []
     @State private var loading = false
     @State private var composing = false
     @State private var pendingConvo: Int?
     @State private var selected: Int?      // iPad two-pane selection
+    @State private var query = ""          // name filter (participant name)
+    @State private var offset = 0
+    @State private var hasMore = true
+    @State private var searchTask: Task<Void, Never>?
     private let api = DcampAPI.shared
+    private let pageSize = 30
 
     private var twoPane: Bool { hSize == .regular }
+
+    /// Client-side name filter — instant, and works even before the server's `q`
+    /// param is deployed. Matches participants OTHER than me (else my own name
+    /// matches every conversation). The server `q` still runs too, so a deployed
+    /// server can search the full history beyond what's been scrolled in.
+    private var displayConvos: [DMConversation] {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        if q.isEmpty { return convos }
+        let myID = session.me?.id
+        return convos.filter { c in
+            c.members.contains { $0.id != myID && $0.name.localizedCaseInsensitiveContains(q) }
+        }
+    }
 
     var body: some View {
         Group {
@@ -205,7 +237,7 @@ struct DMListView: View {
         }) {
             NewDMView { convoID in pendingConvo = convoID }
         }
-        .task { await load() }
+        .task { if convos.isEmpty { await reload() } }
     }
 
     private var listColumn: some View {
@@ -217,12 +249,17 @@ struct DMListView: View {
                     Button { composing = true } label: { Image(systemName: "square.and.pencil") }
                         .buttonStyle(.plain).foregroundStyle(Color.dcAccent)
                 }
-                if convos.isEmpty && !loading {
-                    ContentUnavailableView(T("No messages yet"), systemImage: "envelope",
-                                           description: Text(T("Start a private conversation."))).padding(.top, 30)
+                filterField
+                if displayConvos.isEmpty && !loading {
+                    ContentUnavailableView(
+                        query.isEmpty ? T("No messages yet") : T("No matches"),
+                        systemImage: query.isEmpty ? "envelope" : "magnifyingglass",
+                        description: Text(query.isEmpty ? T("Start a private conversation.")
+                                                        : T("No conversations with a participant matching your filter.")))
+                        .padding(.top, 30)
                 } else {
                     VStack(spacing: 0) {
-                        ForEach(convos) { c in
+                        ForEach(displayConvos) { c in
                             Button { open(c.id) } label: {
                                 DMConversationRow(convo: c)
                                     .background(twoPane && selected == c.id ? Color.dcAccent.opacity(0.08) : .clear)
@@ -230,10 +267,15 @@ struct DMListView: View {
                             .buttonStyle(.plain)
                             .contextMenu {
                                 Button(role: .destructive) {
-                                    Task { await api.dmArchive(convoID: c.id); await load() }
+                                    Task { await api.dmArchive(convoID: c.id); await reload() }
                                 } label: { Label(T("Archive"), systemImage: "archivebox") }
                             }
+                            // Fill the list in as the last row scrolls into view.
+                            .onAppear { if c.id == displayConvos.last?.id { Task { await loadMore() } } }
                             Divider().background(Color.dcLine)
+                        }
+                        if loading && !convos.isEmpty {
+                            ProgressView().frame(maxWidth: .infinity).padding(.vertical, 12)
                         }
                     }
                     .dcCard(padding: 4)
@@ -243,16 +285,58 @@ struct DMListView: View {
         }
         .scrollContentBackground(.hidden)
         .background(Color.dcBg)
-        .refreshable { await load() }
+        .refreshable { await reload() }
+    }
+
+    /// Filter box: type a name to show only conversations that person is in.
+    private var filterField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").foregroundStyle(Color.dcMuted).font(.system(size: 14))
+            TextField(T("Filter by name"), text: $query)
+                .textFieldStyle(.plain)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .font(.system(size: 15))
+            if !query.isEmpty {
+                Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Color.dcMuted) }
+                    .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 9)
+        .background(Color.dcPanel, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.dcLineStrong, lineWidth: 1))
+        .onChange(of: query) { _, _ in
+            // Debounce so we re-query the server ~300ms after typing stops.
+            searchTask?.cancel()
+            searchTask = Task {
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                if Task.isCancelled { return }
+                await reload()
+            }
+        }
     }
 
     private func open(_ id: Int) {
         if twoPane { selected = id } else { path.append(.dm(id)) }
     }
 
-    private func load() async {
+    /// First page (initial load, pull-to-refresh, or filter change).
+    private func reload() async {
         loading = true; defer { loading = false }
-        if let list = try? await api.dmConversations() { convos = list }
+        let r = try? await api.dmConversations(offset: 0, limit: pageSize, q: query.trimmingCharacters(in: .whitespaces))
+        convos = r?.conversations ?? []
+        offset = convos.count
+        hasMore = r?.hasMore ?? false
+    }
+
+    /// Append the next page as the last row scrolls in.
+    private func loadMore() async {
+        guard !loading, hasMore else { return }
+        loading = true; defer { loading = false }
+        guard let r = try? await api.dmConversations(offset: offset, limit: pageSize, q: query.trimmingCharacters(in: .whitespaces)) else { return }
+        convos.append(contentsOf: r.conversations)
+        offset += r.conversations.count
+        hasMore = r.hasMore
     }
 }
 
@@ -295,10 +379,11 @@ final class DMThreadStore {
     }
     func stop() { realtime.stop() }
     func reload() async { if let t = try? await api.dmThread(convoID: convoID) { thread = t } }
-    func send(html: String) async {
-        guard !PlainText.strip(html).isEmpty else { return }
-        try? await api.dmSend(convoID: convoID, bodyHTML: html)
-        await reload()
+    var sendError: String?
+    func send(html: String) async -> Bool {
+        guard !PlainText.strip(html).isEmpty else { return false }
+        do { try await api.dmSend(convoID: convoID, bodyHTML: html); await reload(); return true }
+        catch { sendError = (error as? DcampAPI.APIError)?.message ?? error.localizedDescription; return false }
     }
 }
 
@@ -306,6 +391,7 @@ struct DMThreadView: View {
     let convoID: Int
     @State private var store = DMThreadStore()
     @State private var showInvite = false
+    @State private var didInitialScroll = false
     private let api = DcampAPI.shared
 
     var body: some View {
@@ -320,8 +406,16 @@ struct DMThreadView: View {
                     .padding(16)
                     .dcColumn()
                 }
+                // Open directly at the most recent message (no visible scroll from
+                // the top); only animate to the bottom for NEW messages after that.
+                .defaultScrollAnchor(.bottom)
                 .onChange(of: store.thread.messages.count) {
-                    if let last = store.thread.messages.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } }
+                    guard let last = store.thread.messages.last else { return }
+                    if didInitialScroll {
+                        withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                    } else {
+                        didInitialScroll = true      // first fill: already at the bottom via the anchor
+                    }
                 }
             }
             InlineComposer(placeholder: "Write a direct message… (rich text, @mention)", draftKey: "dm:\(convoID)") { html in
@@ -331,6 +425,9 @@ struct DMThreadView: View {
         .background(Color.dcBg)
         .navigationTitle(store.thread.members.map(\.name).joined(separator: ", "))
         .navigationBarTitleDisplayMode(.inline)
+        .alert(T("Couldn’t send"), isPresented: Binding(get: { store.sendError != nil }, set: { if !$0 { store.sendError = nil } })) {
+            Button(T("OK")) { store.sendError = nil }
+        } message: { Text(store.sendError ?? "") }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {

@@ -54,6 +54,12 @@ enum KeychainStore {
     // MARK: - Native API bearer token
 
     private static let tokenAccount = "api-token"
+    // Fallback store used ONLY when the Keychain write actually fails. On an
+    // ad-hoc-signed Mac Catalyst dev build (empty entitlements, no keychain-access
+    // group) SecItemAdd returns errSecMissingEntitlement and the token silently
+    // never persists — so the app forgot the login every launch. A properly signed
+    // release build succeeds at the Keychain and never touches this fallback.
+    private static let tokenDefaultsKey = "dcamp.api-token.fallback"
 
     static func saveToken(_ token: String) {
         guard let data = token.data(using: .utf8) else { return }
@@ -66,7 +72,13 @@ enum KeychainStore {
         var add = query
         add[kSecValueData as String] = data
         add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-        SecItemAdd(add as CFDictionary, nil)
+        let status = SecItemAdd(add as CFDictionary, nil)
+        if status == errSecSuccess {
+            UserDefaults.standard.removeObject(forKey: tokenDefaultsKey)
+        } else {
+            // Keychain unavailable (e.g. ad-hoc Catalyst) — remember the login anyway.
+            UserDefaults.standard.set(token, forKey: tokenDefaultsKey)
+        }
     }
 
     static func loadToken() -> String? {
@@ -78,12 +90,14 @@ enum KeychainStore {
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
         var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
-              let data = item as? Data,
-              let token = String(data: data, encoding: .utf8), !token.isEmpty else {
-            return nil
+        if SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+           let data = item as? Data,
+           let token = String(data: data, encoding: .utf8), !token.isEmpty {
+            return token
         }
-        return token
+        // Keychain miss → the ad-hoc-build fallback (nil if we never stored one).
+        let fallback = UserDefaults.standard.string(forKey: tokenDefaultsKey)
+        return (fallback?.isEmpty == false) ? fallback : nil
     }
 
     static func clearToken() {
@@ -93,5 +107,6 @@ enum KeychainStore {
             kSecAttrAccount as String: tokenAccount,
         ]
         SecItemDelete(query as CFDictionary)
+        UserDefaults.standard.removeObject(forKey: tokenDefaultsKey)
     }
 }

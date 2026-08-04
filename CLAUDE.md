@@ -138,8 +138,12 @@ env SIMCTL_CHILD_DCAMP_SMOKE_EMAIL="$TEST_EMAIL" \
 xcrun simctl io "$UDID" screenshot /tmp/shot.png      # then Read the png
 ```
 
-`AppConfig.useLocalDev = true` → the app points at `localhost:8000`
-(`Info.plist` has a **dev-only** `NSAllowsLocalNetworking`). Flip for prod.
+**Server (Live/Test) is a runtime toggle**, not a compile-time flag: `AppConfig.useLocalDev`
+reads UserDefaults key `dcamp_use_local_dev` (default `false` = Live = decentespresso.com;
+`true` = Test = localhost:8000). Admins flip it from **My Settings → Server** (segmented
+Live/Test at the top of the form); switching signs you out (OAuth endpoint differs per server)
+via `SessionStore.switchServer(local:)`. `Info.plist` has a **dev-only** `NSAllowsLocalNetworking`
+for the Test host.
 
 ---
 

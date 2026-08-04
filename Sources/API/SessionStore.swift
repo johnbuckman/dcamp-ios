@@ -19,6 +19,7 @@ final class SessionStore {
     var showRegions = false
     var showRoasters = false
     var pingUnread = 0
+    var chatUnread = 0
     var lang = "en"
 
     var loggingIn = false
@@ -49,7 +50,7 @@ final class SessionStore {
             // Headless auto-login uses the email/pw token mint directly (there's no
             // browser in a smoke run). Production sign-in is browser-only (OAuth).
             loggingIn = true
-            do { try await api.login(email: em, password: pw, deviceID: Self.deviceID); await loadBootstrap(initial: true) }
+            do { try await api.login(email: em, password: pw, deviceID: Self.deviceID); await loadBootstrap() }
             catch { errorMessage = (error as? DcampAPI.APIError)?.message ?? error.localizedDescription }
             loggingIn = false
             FileHandle.standardError.write(Data(
@@ -66,7 +67,7 @@ final class SessionStore {
             }
             if env["DCAMP_SMOKE_M56"] != nil {
                 let chat = (try? await api.chatLines())?.lines.count ?? -1
-                let convos = (try? await api.dmConversations()) ?? []
+                let convos = (try? await api.dmConversations())?.conversations ?? []
                 var dmMsgs = -1
                 if let first = convos.first { dmMsgs = (try? await api.dmThread(convoID: first.id))?.messages.count ?? -1 }
                 let s = try? await api.search("milk")
@@ -87,7 +88,11 @@ final class SessionStore {
         }
         #endif
         if await api.isAuthenticated {
-            await loadBootstrap(initial: true)
+            // On launch a bootstrap failure means the SAVED token is stale → log out.
+            if !(await loadBootstrap()) {
+                await api.setToken(nil)
+                phase = .loggedOut
+            }
         } else {
             phase = .loggedOut
         }
@@ -128,7 +133,15 @@ final class SessionStore {
         do {
             let result = try await OAuthService.shared.authorize()
             try await api.exchangeOAuth(code: result.code, verifier: result.verifier, deviceID: Self.deviceID)
-            await loadBootstrap(initial: true)
+            // The token is valid now. A first bootstrap can transiently fail while the
+            // auth sheet is still dismissing (the "blank screen, worked on retry" bug);
+            // retry once and NEVER drop the freshly-minted token — no full re-login.
+            if !(await loadBootstrap()) {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                if !(await loadBootstrap()) {
+                    errorMessage = errorMessage ?? T("Signed in, but couldn’t load the forum. Pull to refresh.")
+                }
+            }
         } catch let e as ASWebAuthenticationSessionError where e.code == .canceledLogin {
             // User dismissed the browser sheet — not an error.
         } catch {
@@ -136,7 +149,11 @@ final class SessionStore {
         }
     }
 
-    func loadBootstrap(initial: Bool) async {
+    /// Load the bootstrap payload into session state. Returns whether it succeeded;
+    /// the CALLER decides what a failure means (launch → drop stale token; post-login
+    /// → keep the valid token and retry). Never drops the token itself.
+    @discardableResult
+    func loadBootstrap() async -> Bool {
         do {
             let b: Bootstrap = try await api.call("bootstrap")
             me = b.me
@@ -148,25 +165,32 @@ final class SessionStore {
             showRegions = (b.showRegions ?? 0) != 0
             showRoasters = (b.showRoasters ?? 0) != 0
             pingUnread = b.pingUnread ?? 0
+            chatUnread = b.chatUnread ?? 0
             lang = b.lang ?? "en"
-            // Adopt the member's server-stored appearance on login (cross-device sync).
-            if initial, let t = b.dcampTheme {
+            // Adopt the member's server-stored appearance (cross-device sync).
+            if let t = b.dcampTheme {
                 UserDefaults.standard.set(ThemeMode.from(t).rawValue, forKey: "dcamp_theme")
             }
             phase = .loggedIn
+            return true
         } catch {
-            // A stale/invalid token on launch → fall back to the login screen.
-            if initial {
-                await api.setToken(nil)
-                phase = .loggedOut
-            } else {
-                errorMessage = (error as? DcampAPI.APIError)?.message ?? error.localizedDescription
-            }
+            errorMessage = (error as? DcampAPI.APIError)?.message ?? error.localizedDescription
+            return false
         }
     }
 
     func refresh() async {
-        await loadBootstrap(initial: false)
+        _ = await loadBootstrap()
+    }
+
+    /// Switch which server the app talks to (admin-only, from My Settings). The
+    /// OAuth endpoint differs per server, so the current bearer token is invalid on
+    /// the other one — revoke it on the CURRENT server first, THEN flip, landing on
+    /// the login screen so the next sign-in goes to the newly selected server.
+    func switchServer(local: Bool) async {
+        guard local != AppConfig.useLocalDev else { return }
+        await logout()                     // revoke + clear on the current server → .loggedOut
+        AppConfig.setUseLocalDev(local)     // subsequent apiURL / OAuth URLs now point at the new server
     }
 
     func logout() async {
@@ -182,6 +206,7 @@ final class SessionStore {
         isAdmin = false
         bcLinked = false
         pingUnread = 0
+        chatUnread = 0
         phase = .loggedOut
     }
 }

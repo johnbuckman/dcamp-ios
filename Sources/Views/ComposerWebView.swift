@@ -116,7 +116,9 @@ struct InlineComposer: View {
     var placeholder: String
     var model: ComposerModel = ComposerModel()
     var draftKey: String? = nil          // enables per-context draft persistence
-    var onSend: (String) async -> Void
+    /// Returns whether the send succeeded — the editor keeps the text (and draft)
+    /// on failure so a rejected send never silently discards what was typed.
+    var onSend: (String) async -> Bool
 
     @State private var sending = false
 
@@ -167,9 +169,12 @@ struct InlineComposer: View {
         Task {
             let html = await model.currentHTML()
             if !PlainText.strip(html).isEmpty {
-                await onSend(html)
-                model.clear()
-                model.clearDraft()
+                // Clear ONLY on success — a failed send (e.g. server rejects it)
+                // must not wipe the user's text, which read as "Send does nothing".
+                if await onSend(html) {
+                    model.clear()
+                    model.clearDraft()
+                }
             }
             sending = false
         }

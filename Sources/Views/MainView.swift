@@ -261,7 +261,7 @@ struct ForumsHomeView: View {
                     Button { path.append(.chat) } label: {
                         OtherCard(icon: "bubble.left.and.bubble.right.fill", tint: Color.dcAccent,
                                   title: "Chat Room", subtitle: "Live community chat for Decent espresso owners.",
-                                  stat: chatStat)
+                                  badge: session.chatUnread, stat: chatStat)
                     }.buttonStyle(.plain)
                     Button { path.append(.dms) } label: {
                         OtherCard(icon: "envelope.fill", tint: Color(red: 0.55, green: 0.36, blue: 0.86),
@@ -282,7 +282,7 @@ struct ForumsHomeView: View {
         .scrollContentBackground(.hidden)
         .navigationBarTitleDisplayMode(.inline)
         .task { dmUnread = await DcampAPI.shared.dmUnread(); await loadChatStat() }
-        .refreshable { dmUnread = await DcampAPI.shared.dmUnread(); await loadChatStat() }
+        .refreshable { dmUnread = await DcampAPI.shared.dmUnread(); await loadChatStat(); await session.refresh() }
     }
 
     private func loadChatStat() async {

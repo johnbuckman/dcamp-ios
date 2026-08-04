@@ -11,16 +11,24 @@ enum AppConfig {
     /// rewrites the address bar to `/dcamp/…`) and the older hash-router build still
     /// live in production until the clean-URL deploy. Entering at `/dcamp` directly
     /// would 404 on the un-migrated prod, so this is the compatible entry point.
-    static let startURL = URL(string: "https://decentespresso.com/support/dcamp/")!
+    static var startURL: URL { URL(string: assetBase + "/support/dcamp/")! }
 
-    /// dcamp's JSON API endpoint (`/support/dcamp/api.adp`).
-    ///
-    /// Production (decentespresso.com) is the default. Flip to `true` ONLY to run
-    /// against a local NaviServer at localhost:8000 for dev.
-    static let useLocalDev = false
+    /// Which server the app talks to. Runtime-switchable (admin-only, from My
+    /// Settings) via UserDefaults so a build can point at either server without
+    /// recompiling. Production (decentespresso.com = Live) is the default; `true`
+    /// runs against a local NaviServer at localhost:8000 (Test). Because the OAuth
+    /// endpoint differs per server, changing this invalidates the current token —
+    /// callers must log out and re-authenticate (see SessionStore.switchServer).
+    static let serverDefaultsKey = "dcamp_use_local_dev"
+    static var useLocalDev: Bool { UserDefaults.standard.bool(forKey: serverDefaultsKey) }
+    static func setUseLocalDev(_ v: Bool) { UserDefaults.standard.set(v, forKey: serverDefaultsKey) }
+
     static let localAPIURL = URL(string: "http://localhost:8000/support/dcamp/api.adp")!
     static let prodAPIURL  = URL(string: "https://decentespresso.com/support/dcamp/api.adp")!
     static var apiURL: URL { useLocalDev ? localAPIURL : prodAPIURL }
+
+    /// Human-readable host for the current server (shown in the Settings switch).
+    static var serverLabel: String { useLocalDev ? "localhost:8000" : "decentespresso.com" }
 
     /// scheme+host for turning server-relative asset paths (avatars, attachments,
     /// `/support/dcamp/…`) into absolute URLs.
@@ -46,6 +54,7 @@ enum AppConfig {
     static let internalHosts: Set<String> = [
         "decentespresso.com",
         "www.decentespresso.com",
+        "localhost",                 // Test server
     ]
 
     /// Name of the JS bridge: `window.webkit.messageHandlers.dcamp.postMessage(...)`.

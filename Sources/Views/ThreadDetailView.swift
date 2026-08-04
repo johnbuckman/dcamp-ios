@@ -25,6 +25,7 @@ struct ThreadDetailView: View {
     @State private var pendingDeleteComment: Comment?
     @State private var offtopicCommentID: Int?
     @State private var showOfftopic = false
+    @State private var composeError: String?
 
     private let api = DcampAPI.shared
 
@@ -75,6 +76,9 @@ struct ThreadDetailView: View {
         .overlay { if loading && message == nil { ProgressView() } }
         .navigationTitle(message?.displaySubject ?? "")
         .navigationBarTitleDisplayMode(.inline)
+        .alert(T("Couldn’t post"), isPresented: Binding(get: { composeError != nil }, set: { if !$0 { composeError = nil } })) {
+            Button(T("OK")) { composeError = nil }
+        } message: { Text(composeError ?? "") }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 if siblingIndex != nil {
@@ -222,9 +226,15 @@ struct ThreadDetailView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(T("Add a comment")).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.dcInk)
                 InlineComposer(placeholder: "Write a comment… (rich text, @mention)", model: composerModel, draftKey: "thread:\(currentID)") { html in
-                    let r = try? await api.createComment(messageID: currentID, bodyHTML: html)
-                    await load()
-                    if let cid = r?.id { await checkOfftopic(commentID: cid) }
+                    do {
+                        let r = try await api.createComment(messageID: currentID, bodyHTML: html)
+                        await load()
+                        if let cid = r.id { await checkOfftopic(commentID: cid) }
+                        return true
+                    } catch {
+                        composeError = (error as? DcampAPI.APIError)?.message ?? error.localizedDescription
+                        return false
+                    }
                 }
                 .background(Color.dcPanel)
                 .clipShape(RoundedRectangle(cornerRadius: DC.radius))

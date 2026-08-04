@@ -26,6 +26,7 @@ struct SettingsView: View {
     @State private var summarySources = ""   // round-tripped; source picker lives on the web Summaries page
 
     @State private var muted: [Person] = []
+    @State private var pendingServerLocal: Bool?   // admin server switch, awaiting confirm
     @State private var loaded = false
     @State private var savingProfile = false
     @State private var showClose = false
@@ -43,6 +44,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                if session.isAdmin { serverSection }
                 profileSection
                 appearanceSection
                 languageSection
@@ -67,6 +69,38 @@ struct SettingsView: View {
                 Button(T("OK")) { avatarError = nil }
             } message: { Text(avatarError ?? "") }
             .sheet(isPresented: $showHelp) { HelpView() }
+        }
+    }
+
+    // Admin-only: point the app at the Live (decentespresso.com) or Test
+    // (localhost:8000) server. Switching signs you out — the OAuth endpoint differs
+    // per server, so you sign in again on the one you pick.
+    private var serverSection: some View {
+        Section {
+            Picker(T("Server"), selection: Binding(
+                get: { AppConfig.useLocalDev },
+                set: { wantLocal in if wantLocal != AppConfig.useLocalDev { pendingServerLocal = wantLocal } }
+            )) {
+                Text(T("Live")).tag(false)
+                Text(T("Test")).tag(true)
+            }
+            .pickerStyle(.segmented)
+        } header: {
+            Text(T("Server"))
+        } footer: {
+            Text(T("Now using") + " " + AppConfig.serverLabel + ". " + T("Switching signs you out; you'll sign in again on the selected server."))
+        }
+        .confirmationDialog(T("Switch server?"),
+                            isPresented: Binding(get: { pendingServerLocal != nil }, set: { if !$0 { pendingServerLocal = nil } }),
+                            titleVisibility: .visible) {
+            if let want = pendingServerLocal {
+                Button(want ? T("Switch to Test (localhost:8000)") : T("Switch to Live (decentespresso.com)")) {
+                    Task { await session.switchServer(local: want); pendingServerLocal = nil; dismiss() }
+                }
+                Button(T("Cancel"), role: .cancel) { pendingServerLocal = nil }
+            }
+        } message: {
+            Text(T("You'll be signed out and need to sign in again on the selected server."))
         }
     }
 

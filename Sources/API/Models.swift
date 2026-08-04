@@ -77,6 +77,7 @@ struct Bootstrap: Codable {
     var showRoasters: Int?
     var memberCount: Int?
     var pingUnread: Int?
+    var chatUnread: Int?
     var lang: String?
     var dcampTheme: String?      // "light" | "dark" | "" (system) — synced with the web ui-pref
     var myEmail: String?

@@ -157,6 +157,11 @@ struct ThreadRowView: View {
                     placeholder: { Color.dcLine }
                     .frame(width: 52, height: 52)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else {
+                // No thread graphic → fall back to the author's avatar (as the web
+                // does), so every row keeps a 52pt leading slot and the titles all
+                // wrap at the same width instead of some going full-bleed.
+                Avatar(person: row.author, size: 52)
             }
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {

@@ -156,10 +156,15 @@ actor DcampAPI {
 
     // MARK: - Direct messages
 
-    func dmConversations() async throws -> [DMConversation] {
-        struct R: Codable { var conversations: [DMConversation] = [] }
-        let r: R = try await call("dm_conversations")
-        return r.conversations
+    struct DMConversationsPage { var conversations: [DMConversation]; var hasMore: Bool }
+    /// Paged DM conversation list. `q` filters to convos with another member whose
+    /// name matches; `offset`/`limit` fill the list in as the user scrolls.
+    func dmConversations(offset: Int = 0, limit: Int = 30, q: String = "") async throws -> DMConversationsPage {
+        struct R: Codable { var conversations: [DMConversation] = []; var hasMore: Bool? }
+        var params = ["offset": String(offset), "limit": String(limit)]
+        if !q.isEmpty { params["q"] = q }
+        let r: R = try await call("dm_conversations", params)
+        return DMConversationsPage(conversations: r.conversations, hasMore: r.hasMore ?? false)
     }
 
     func dmThread(convoID: Int, limit: Int = 40) async throws -> DMThread {

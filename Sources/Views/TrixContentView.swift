@@ -111,18 +111,7 @@ struct TrixBlockView: View {
             }
 
         case .image(let url):
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let img):
-                    img.resizable().scaledToFit()
-                        .frame(maxWidth: .infinity)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                case .failure:
-                    Self.placeholder(system: "photo", text: "Image unavailable")
-                default:
-                    Self.placeholder(system: "photo", text: nil).overlay(ProgressView())
-                }
-            }
+            ZoomableTrixImage(url: url)
 
         case .youtube(let id):
             YouTubeCard(id: id)
@@ -144,8 +133,7 @@ struct TrixBlockView: View {
             }
             .foregroundStyle(.secondary)
         }
-        .frame(height: 160)
-        .frame(maxWidth: .infinity)
+        .frame(width: 220, height: 150)
     }
 }
 
@@ -204,5 +192,93 @@ struct YouTubeCard: View {
             .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// An inline content image, capped so it never fills the whole bubble/column, that
+/// opens a full-screen pinch-zoom viewer on tap — matching the web's zoom-in
+/// behaviour on chat/DM/comment/thread images. Hugs its content so a DM bubble
+/// wraps the photo instead of stretching full width.
+struct ZoomableTrixImage: View {
+    let url: URL
+    @State private var showFull = false
+
+    var body: some View {
+        AsyncImage(url: url) { phase in
+            switch phase {
+            case .success(let img):
+                img.resizable().scaledToFit()
+                    .frame(maxWidth: 320, maxHeight: 420)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.dcLine, lineWidth: 1))
+                    .contentShape(Rectangle())
+                    .onTapGesture { showFull = true }
+            case .failure:
+                TrixBlockView.placeholder(system: "photo", text: "Image unavailable")
+            default:
+                TrixBlockView.placeholder(system: "photo", text: nil).overlay(ProgressView())
+            }
+        }
+        .fullScreenCover(isPresented: $showFull) { ImageZoomViewer(url: url) }
+    }
+}
+
+/// Full-screen image viewer: pinch to zoom, drag to pan, double-tap to toggle,
+/// tap the ✕ (or swipe down) to close.
+struct ImageZoomViewer: View {
+    let url: URL
+    @Environment(\.dismiss) private var dismiss
+    @State private var scale: CGFloat = 1
+    @State private var lastScale: CGFloat = 1
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let img):
+                    img.resizable().scaledToFit()
+                        .scaleEffect(scale)
+                        .offset(offset)
+                        .gesture(
+                            MagnificationGesture()
+                                .onChanged { v in scale = min(max(lastScale * v, 1), 6) }
+                                .onEnded { _ in lastScale = scale; if scale <= 1 { withAnimation { offset = .zero; lastOffset = .zero } } }
+                        )
+                        .simultaneousGesture(
+                            DragGesture()
+                                .onChanged { v in if scale > 1 { offset = CGSize(width: lastOffset.width + v.translation.width, height: lastOffset.height + v.translation.height) } }
+                                .onEnded { v in
+                                    if scale > 1 { lastOffset = offset }
+                                    else if v.translation.height > 80 { dismiss() }   // swipe down to close
+                                }
+                        )
+                        .onTapGesture(count: 2) {
+                            withAnimation {
+                                if scale > 1 { scale = 1; lastScale = 1; offset = .zero; lastOffset = .zero }
+                                else { scale = 2.5; lastScale = 2.5 }
+                            }
+                        }
+                case .failure:
+                    Image(systemName: "photo").font(.largeTitle).foregroundStyle(.white.opacity(0.7))
+                default:
+                    ProgressView().tint(.white)
+                }
+            }
+            VStack {
+                HStack {
+                    Spacer()
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 30)).foregroundStyle(.white.opacity(0.9))
+                            .shadow(radius: 4)
+                    }
+                    .padding(16)
+                }
+                Spacer()
+            }
+        }
     }
 }
