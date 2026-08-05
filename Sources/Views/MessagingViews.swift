@@ -265,7 +265,11 @@ struct DMListView: View {
                                                         : T("No conversations with a participant matching your filter.")))
                         .padding(.top, 30)
                 } else {
-                    VStack(spacing: 0) {
+                    // LazyVStack (not VStack) so each row's onAppear fires when it
+                    // actually scrolls into view — a plain VStack renders every row up
+                    // front, so the last-row trigger fired during the initial load
+                    // (guarded) and never again, stalling the list at page 1.
+                    LazyVStack(spacing: 0) {
                         ForEach(displayConvos) { c in
                             Button { open(c.id) } label: {
                                 DMConversationRow(convo: c)
