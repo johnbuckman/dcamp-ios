@@ -139,7 +139,7 @@ struct ThreadDetailView: View {
     private func messageCard(_ m: MessageDetail) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
-                Avatar(person: m.author, size: 46)
+                Avatar(person: m.author, size: 46, tappable: true)
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 8) {
                         if m.pinned == 1 { Image(systemName: "pin.fill").foregroundStyle(.orange) }
@@ -190,7 +190,7 @@ struct ThreadDetailView: View {
 
     private func commentRow(_ c: Comment) -> some View {
         HStack(alignment: .top, spacing: 12) {
-            Avatar(person: c.author, size: 34)
+            Avatar(person: c.author, size: 34, tappable: true)
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     AuthorLine(person: c.author, date: c.createdAt)
