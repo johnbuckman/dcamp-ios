@@ -466,14 +466,18 @@ struct DMBubble: View {
     let message: DMMessage
     var showSender: Bool = false          // group conversations (>2 people)
 
+    // Bigger avatars where there's room (iPad / Mac Catalyst = .pad idiom); keep the
+    // compact size on iPhone, where screen width is limited.
+    private var avatarSize: CGFloat { UIDevice.current.userInterfaceIdiom == .phone ? 28 : 56 }
+
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
             if message.isMine {
                 Spacer(minLength: 44)
                 bubble
-                Avatar(person: message.sender, size: 28)
+                Avatar(person: message.sender, size: avatarSize)
             } else {
-                Avatar(person: message.sender, size: 28)
+                Avatar(person: message.sender, size: avatarSize)
                 bubble
                 Spacer(minLength: 44)
             }
