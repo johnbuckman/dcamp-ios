@@ -103,6 +103,9 @@ struct ChatView: View {
     @State private var store = ChatStore()
     @State private var editingLine: ChatLine?
     @State private var didInitialScroll = false
+    // Owned as @State so it survives the 3s poll re-renders — a fresh ComposerModel
+    // each render would have a nil webView, so Send would read empty and no-op.
+    @State private var composerModel = ComposerModel()
     private let api = DcampAPI.shared
 
     private func copyChatLink(_ id: Int) {
@@ -153,7 +156,7 @@ struct ChatView: View {
                 }
             }
             if session.canPost {
-                InlineComposer(placeholder: "Message the room… (rich text, @mention)", draftKey: "chat:main") { html in
+                InlineComposer(placeholder: "Message the room… (rich text, @mention)", model: composerModel, draftKey: "chat:main") { html in
                     await store.send(html: html)
                 }
             } else {
@@ -392,6 +395,9 @@ struct DMThreadView: View {
     @State private var store = DMThreadStore()
     @State private var showInvite = false
     @State private var didInitialScroll = false
+    // Owned as @State so it survives the 6s poll re-renders (see ChatView) — else a
+    // fresh ComposerModel per render has a nil webView and Send reads empty → no-op.
+    @State private var composerModel = ComposerModel()
     private let api = DcampAPI.shared
 
     var body: some View {
@@ -418,7 +424,7 @@ struct DMThreadView: View {
                     }
                 }
             }
-            InlineComposer(placeholder: "Write a direct message… (rich text, @mention)", draftKey: "dm:\(convoID)") { html in
+            InlineComposer(placeholder: "Write a direct message… (rich text, @mention)", model: composerModel, draftKey: "dm:\(convoID)") { html in
                 await store.send(html: html)
             }
         }
