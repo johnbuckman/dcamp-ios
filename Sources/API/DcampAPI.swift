@@ -160,11 +160,14 @@ actor DcampAPI {
     /// Paged DM conversation list. `q` filters to convos with another member whose
     /// name matches; `offset`/`limit` fill the list in as the user scrolls.
     func dmConversations(offset: Int = 0, limit: Int = 30, q: String = "") async throws -> DMConversationsPage {
-        struct R: Codable { var conversations: [DMConversation] = []; var hasMore: Bool? }
+        // has_more is a 0/1 INT in the dcamp JSON (like is_admin/can_post) — decoding
+        // it as Bool throws a type mismatch that fails the WHOLE response, which
+        // silently emptied the list. Decode as Int and compare.
+        struct R: Codable { var conversations: [DMConversation] = []; var hasMore: Int? }
         var params = ["offset": String(offset), "limit": String(limit)]
         if !q.isEmpty { params["q"] = q }
         let r: R = try await call("dm_conversations", params)
-        return DMConversationsPage(conversations: r.conversations, hasMore: r.hasMore ?? false)
+        return DMConversationsPage(conversations: r.conversations, hasMore: (r.hasMore ?? 0) != 0)
     }
 
     func dmThread(convoID: Int, limit: Int = 40) async throws -> DMThread {
