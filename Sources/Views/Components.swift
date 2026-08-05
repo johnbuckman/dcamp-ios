@@ -35,6 +35,9 @@ enum RelativeTime {
 struct Avatar: View {
     let person: Person?
     var size: CGFloat = 36
+    var tappable: Bool = false            // tap → open that person's member card
+    // Optional so avatars in contexts without a Router (e.g. some sheets) don't crash.
+    @Environment(Router.self) private var router: Router?
 
     var body: some View {
         Group {
@@ -51,6 +54,8 @@ struct Avatar: View {
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
+        .contentShape(Circle())
+        .onTapGesture { if tappable, let id = person?.id, id > 0 { router?.personID = id } }
     }
 
     private var initialsCircle: some View {

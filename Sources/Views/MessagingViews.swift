@@ -49,9 +49,13 @@ struct LineRow: View {
     var translated: String? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            AuthorLine(person: author, date: createdAt)
-            TranslatableText(original: html, translated: translated).font(.system(size: 15))
+        HStack(alignment: .top, spacing: 10) {
+            Avatar(person: author, size: 36, tappable: true)   // web shows a per-line avatar; native was missing it
+            VStack(alignment: .leading, spacing: 5) {
+                AuthorLine(person: author, date: createdAt)
+                TranslatableText(original: html, translated: translated).font(.system(size: 15))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 10)
@@ -475,9 +479,9 @@ struct DMBubble: View {
             if message.isMine {
                 Spacer(minLength: 44)
                 bubble
-                Avatar(person: message.sender, size: avatarSize)
+                Avatar(person: message.sender, size: avatarSize, tappable: true)
             } else {
-                Avatar(person: message.sender, size: avatarSize)
+                Avatar(person: message.sender, size: avatarSize, tappable: true)
                 bubble
                 Spacer(minLength: 44)
             }
