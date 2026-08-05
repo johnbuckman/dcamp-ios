@@ -84,6 +84,14 @@ are in Claude's private memory / ask John — deliberately not in this repo.
    through the WKWebView bridge; gating Post/Send on `contentLength` left the button
    permanently disabled ("can't post" bug). `ComposerModel.currentHTML()` reads
    `dcampGetHTML()` at send time. Never re-gate on `contentLength`.
+   **1b. The `ComposerModel` MUST be owned as `@State` by the view that hosts the
+   `InlineComposer`** (ChatView / DMThreadView / ThreadDetailView all do). `InlineComposer`'s
+   `model` default `= ComposerModel()` is recreated on every parent re-render; in a POLLING
+   view (chat 3s, DM 6s) that hands the send path a fresh model whose `webView` is nil
+   (`ComposerWebView.makeUIView` bound its Coordinator to the *original* model), so
+   `currentHTML()` returns an empty fallback and **Send silently no-ops — no send, no error**.
+   This was the real "SEND does nothing" bug (v1.8); error-surfacing didn't fix it because
+   `onSend` was never reached.
 2. **`editor.html` needs `<meta charset="utf-8">`** or placeholders render mojibake ("Writeâ€¦").
 3. **`setBadgeCount` pops the notification permission prompt** when status is undetermined —
    `NotificationsStore.updateBadge()` guards on `.authorized`.
