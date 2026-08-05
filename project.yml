@@ -7,8 +7,8 @@ options:
 
 settings:
   base:
-    MARKETING_VERSION: "1.8"
-    CURRENT_PROJECT_VERSION: "9"
+    MARKETING_VERSION: "1.9"
+    CURRENT_PROJECT_VERSION: "10"
     SWIFT_VERSION: "5.0"
     DEVELOPMENT_TEAM: ""          # set your Apple Developer Team ID for device/App Store builds
     CODE_SIGN_STYLE: Automatic

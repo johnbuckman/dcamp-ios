@@ -107,6 +107,11 @@ enum Inline {
         if v.hasPrefix("rgb") {
             let nums = v.components(separatedBy: CharacterSet(charactersIn: "0123456789.").inverted).filter { !$0.isEmpty }
             if nums.count >= 3, let r = Double(nums[0]), let g = Double(nums[1]), let b = Double(nums[2]) {
+                // The native composer used to stamp the editor's default text colour as
+                // rgba(0,0,0,0.847) (near-black) — ignore near-black/near-white rgb() so
+                // it inherits the bubble/column colour (white on a "mine" bubble) instead
+                // of rendering black-on-blue. Deliberate palette colours are #hex, not rgb().
+                if (r < 20 && g < 20 && b < 20) || (r > 235 && g > 235 && b > 235) { return nil }
                 let a = nums.count >= 4 ? (Double(nums[3]) ?? 1) : 1
                 return Color(.sRGB, red: r/255, green: g/255, blue: b/255, opacity: a)
             }

@@ -41,7 +41,7 @@ struct Avatar: View {
             if let url = person?.avatarURL {
                 AsyncImage(url: url) { phase in
                     switch phase {
-                    case .success(let img): img.resizable().scaledToFill()
+                    case .success(let img): img.resizable().interpolation(.high).antialiased(true).scaledToFill()
                     default: initialsCircle
                     }
                 }

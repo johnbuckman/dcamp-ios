@@ -377,7 +377,26 @@
   };
 
   // Called by Swift to read the current HTML on demand.
-  window.dcampGetHTML = function () { return input.value; };
+  window.dcampGetHTML = function () {
+    // WebKit/Catalyst stamps the editor's DEFAULT text colour as an inline style on
+    // typed spans (e.g. color: rgba(0,0,0,0.847)); that then renders black-on-blue in
+    // a "mine" DM/chat bubble (and would on the web too). Strip default near-black /
+    // near-white colour declarations so only deliberately-picked palette colours (hex)
+    // survive.
+    var tmp = document.createElement("div");
+    tmp.innerHTML = input.value;
+    Array.prototype.forEach.call(tmp.querySelectorAll('[style*="color"]'), function (el) {
+      var c = ((el.style && el.style.color) || "").replace(/\s+/g, "").toLowerCase();
+      var m = c.match(/^rgba?\((\d+),(\d+),(\d+)/);
+      var nearBlack = c === "black" || (m && +m[1] < 20 && +m[2] < 20 && +m[3] < 20);
+      var nearWhite = c === "white" || (m && +m[1] > 235 && +m[2] > 235 && +m[3] > 235);
+      if (nearBlack || nearWhite) {
+        el.style.removeProperty("color");
+        if (!el.getAttribute("style")) el.removeAttribute("style");
+      }
+    });
+    return tmp.innerHTML;
+  };
 
   // Called by Swift to focus the editor.
   window.dcampFocus = function () { editorEl.focus(); };
