@@ -4,16 +4,29 @@ import SwiftUI
 /// the pinned sidebar.
 enum SummaryLoader {
     /// Returns the summary HTML and, for the home summary, the "you were mentioned" block.
+    ///
+    /// Day summaries are shared and generated once per day: everybody reads that
+    /// cached copy rather than each paying for their own. So we PEEK the shared
+    /// cache first (an indexed SELECT, no AI) and show the cached summary when it
+    /// exists — only generating a fresh one on a cache miss (John's request: use the
+    /// cached daily summary, don't recalculate unless necessary).
     static func load(_ kind: SummaryKind, days: Int) async throws -> (html: String, mine: String?) {
-        let api = DcampAPI.shared
-        let r: SummaryResult
-        switch kind {
-        case .home: r = try await api.homeSummary(days: days)
-        case .forum(let id, _): r = try await api.forumSummary(projectID: id, days: days)
-        case .thread(let id): r = try await api.threadSummary(messageID: id, days: days)
-        case .chat: r = try await api.chatSummary(days: days)
+        if let cached = try? await fetch(kind, days: days, peek: true),
+           let h = cached.summary, !h.isEmpty {
+            return (h, (cached.mine?.isEmpty == false) ? cached.mine : nil)
         }
+        let r = try await fetch(kind, days: days, peek: false)
         return (r.summary ?? "<p>No activity in this window.</p>", (r.mine?.isEmpty == false) ? r.mine : nil)
+    }
+
+    private static func fetch(_ kind: SummaryKind, days: Int, peek: Bool) async throws -> SummaryResult {
+        let api = DcampAPI.shared
+        switch kind {
+        case .home: return try await api.homeSummary(days: days, peek: peek)
+        case .forum(let id, _): return try await api.forumSummary(projectID: id, days: days, peek: peek)
+        case .thread(let id): return try await api.threadSummary(messageID: id, days: days, peek: peek)
+        case .chat: return try await api.chatSummary(days: days, peek: peek)
+        }
     }
 
     /// Day windows offered in the picker (the web allows 1–30; these presets span it).
@@ -41,11 +54,11 @@ struct SummarizeBar: View {
                 Image(systemName: "sparkles").foregroundStyle(.yellow)
                 Menu {
                     ForEach(SummaryLoader.windows, id: \.self) { d in
-                        Button("past \(d) day\(d == 1 ? "" : "s")") { days = d; if expanded { Task { await reload() } } }
+                        Button(Self.daysLabel(d)) { days = d; if expanded { Task { await reload() } } }
                     }
                 } label: {
                     HStack(spacing: 4) {
-                        Text("past \(days) day\(days == 1 ? "" : "s")").font(.system(size: 14, weight: .medium))
+                        Text(Self.daysLabel(days)).font(.system(size: 14, weight: .medium))
                         Image(systemName: "chevron.down").font(.system(size: 10))
                     }
                     .foregroundStyle(Color.dcInkSoft)
@@ -53,7 +66,7 @@ struct SummarizeBar: View {
                     .background(Color.dcPanel, in: Capsule())
                     .overlay(Capsule().stroke(Color.dcLineStrong, lineWidth: 1))
                 }
-                Button(expanded ? "Hide" : "Summarize") { toggle() }.buttonStyle(DCPrimaryButtonStyle())
+                Button(expanded ? T("Hide") : T("Summarize")) { toggle() }.buttonStyle(DCPrimaryButtonStyle())
                 if expanded && hSize == .regular {
                     Button { pinToSidebar() } label: { Label(T("Show in sidebar"), systemImage: "sidebar.left") }
                         .font(.system(size: 13))
@@ -88,6 +101,13 @@ struct SummarizeBar: View {
                 .overlay(RoundedRectangle(cornerRadius: DC.radius).stroke(Color.dcLine, lineWidth: 1))
             }
         }
+    }
+
+    /// Localized "past N days" label. Uses a `{n}` template (like the web's `tn`)
+    /// so the number's position is chosen by the translation, not hard-coded.
+    static func daysLabel(_ d: Int) -> String {
+        let tmpl = d == 1 ? T("past {n} day") : T("past {n} days")
+        return tmpl.replacingOccurrences(of: "{n}", with: "\(d)")
     }
 
     private func toggle() {
@@ -156,7 +176,7 @@ struct EmailSummariesView: View {
 
     private var sourceOptions: [(String, String)] {
         // The 4 forums (by id) plus the Chat Room, mirroring the web.
-        session.boards.filter { $0.kind == nil || $0.kind == "forum" }.map { (String($0.id), $0.name) } + [("chat", "Chat Room")]
+        session.boards.filter { $0.kind == nil || $0.kind == "forum" }.map { (String($0.id), $0.name) } + [("chat", T("Chat Room"))]
     }
     private var sourcesCSV: String { selectedSources.sorted().joined(separator: ",") }
 
@@ -167,7 +187,7 @@ struct EmailSummariesView: View {
                     Text(T("Daily")).tag("day"); Text(T("Weekly")).tag("week"); Text(T("Monthly")).tag("month")
                 }.pickerStyle(.segmented)
                 Toggle(T("Email me summaries"), isOn: $emailEnabled)
-                if emailEnabled { Text("You’re signed up for \(periodLabel) summaries.").font(.caption).foregroundStyle(Color.dcMuted) }
+                if emailEnabled { Text(signupLabel).font(.caption).foregroundStyle(Color.dcMuted) }
             }
             Section(T("Include")) {
                 ForEach(sourceOptions, id: \.0) { id, name in
@@ -180,7 +200,7 @@ struct EmailSummariesView: View {
             Section {
                 Button { Task { await save() } } label: { Text(T("Save summary settings")) }
                 Button { Task { await sendSample() } } label: {
-                    Label(sampleSentAt == nil ? "Email me a sample" : "Sample sent", systemImage: "paperplane")
+                    Label(sampleSentAt == nil ? T("Email me a sample") : T("Sample sent"), systemImage: "paperplane")
                 }.disabled(sampleSentAt != nil && Date().timeIntervalSince(sampleSentAt!) < 60)
             }
             Section(T("Preview")) {
@@ -195,7 +215,13 @@ struct EmailSummariesView: View {
         .onChange(of: period) { _, _ in digest = nil }
     }
 
-    private var periodLabel: String { period == "day" ? "daily" : period == "month" ? "monthly" : "weekly" }
+    private var signupLabel: String {
+        switch period {
+        case "day": return T("You’re signed up for daily summaries.")
+        case "month": return T("You’re signed up for monthly summaries.")
+        default: return T("You’re signed up for weekly summaries.")
+        }
+    }
 
     private func load() async {
         guard !loaded else { return }

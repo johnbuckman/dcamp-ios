@@ -9,17 +9,21 @@ extension DcampAPI {
 
     func homeSummaryInfo() async -> SummaryInfo { (try? await call("home_summary_info")) ?? SummaryInfo() }
 
-    func homeSummary(days: Int) async throws -> SummaryResult {
-        try await call("home_summary", ["days": String(days)])
+    // `peek:true` asks the server whether a shared day-summary is already cached
+    // (a cheap indexed SELECT, no AI) — used to show the cached copy without paying
+    // for a fresh generation. On a peek miss the server returns cached:false with no
+    // summary; SummaryLoader then generates once.
+    func homeSummary(days: Int, peek: Bool = false) async throws -> SummaryResult {
+        try await call("home_summary", ["days": String(days), "peek": peek ? "1" : "0"])
     }
-    func forumSummary(projectID: Int, days: Int) async throws -> SummaryResult {
-        try await call("forum_summary", ["project_id": String(projectID), "days": String(days)])
+    func forumSummary(projectID: Int, days: Int, peek: Bool = false) async throws -> SummaryResult {
+        try await call("forum_summary", ["project_id": String(projectID), "days": String(days), "peek": peek ? "1" : "0"])
     }
-    func threadSummary(messageID: Int, days: Int) async throws -> SummaryResult {
-        try await call("thread_summary", ["id": String(messageID), "days": String(days)])
+    func threadSummary(messageID: Int, days: Int, peek: Bool = false) async throws -> SummaryResult {
+        try await call("thread_summary", ["id": String(messageID), "days": String(days), "peek": peek ? "1" : "0"])
     }
-    func chatSummary(days: Int, room: String = "main") async throws -> SummaryResult {
-        try await call("chat_summary", ["days": String(days), "room": room])
+    func chatSummary(days: Int, room: String = "main", peek: Bool = false) async throws -> SummaryResult {
+        try await call("chat_summary", ["days": String(days), "room": room, "peek": peek ? "1" : "0"])
     }
     /// Multi-source digest used by the Summaries-by-email page.
     func activitySummary(sources: String, period: String) async -> SummaryResult {
@@ -27,6 +31,20 @@ extension DcampAPI {
     }
     func summaryEmailSample(sources: String, period: String) async {
         _ = try? await rawData("summary_email_sample", ["sources": sources, "period": period])
+    }
+
+    // MARK: - Saved forum filters (Country / involvement)
+
+    func filtersList() async -> [SavedFilter] {
+        struct R: Codable { var filters: [SavedFilter]? }
+        let r: R? = try? await call("filters_list")
+        return r?.filters ?? []
+    }
+    func filterSave(name: String, spec: String) async {
+        _ = try? await rawData("filter_save", ["name": name, "spec": spec])
+    }
+    func filterDelete(id: Int) async {
+        _ = try? await rawData("filter_delete", ["id": String(id)])
     }
 
     // MARK: - AI pipeline (pre-post checks + Ask-Derek)

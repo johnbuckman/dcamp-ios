@@ -64,7 +64,7 @@ struct TranslatableText: View {
         VStack(alignment: .leading, spacing: 4) {
             TrixContentView(html: (hasTranslation && !showOriginal) ? translated! : original, onRoute: onRoute)
             if hasTranslation {
-                Button(showOriginal ? "Show translation" : "Translated · Show original") {
+                Button(showOriginal ? T("Show translation") : T("Translated · Show original")) {
                     showOriginal.toggle()
                 }
                 .font(.caption).foregroundStyle(Color.dcLink)
@@ -202,9 +202,15 @@ struct YouTubeCard: View {
 struct ZoomableTrixImage: View {
     let url: URL
     @State private var showFull = false
+    @State private var useOriginal = false
+
+    /// Inline display uses a width-capped .avif variant (fast to fetch); the
+    /// zoom viewer always opens the full original. If the scaled variant fails to
+    /// load we fall back to the original inline too, so images never break.
+    private var displayURL: URL { useOriginal ? url : AppConfig.scaledImageURL(url) }
 
     var body: some View {
-        AsyncImage(url: url) { phase in
+        AsyncImage(url: displayURL) { phase in
             switch phase {
             case .success(let img):
                 img.resizable().scaledToFit()
@@ -214,7 +220,13 @@ struct ZoomableTrixImage: View {
                     .contentShape(Rectangle())
                     .onTapGesture { showFull = true }
             case .failure:
-                TrixBlockView.placeholder(system: "photo", text: "Image unavailable")
+                if useOriginal {
+                    TrixBlockView.placeholder(system: "photo", text: T("Image unavailable"))
+                } else {
+                    // scaled variant failed → retry with the untouched original
+                    TrixBlockView.placeholder(system: "photo", text: nil).overlay(ProgressView())
+                        .onAppear { useOriginal = true }
+                }
             default:
                 TrixBlockView.placeholder(system: "photo", text: nil).overlay(ProgressView())
             }

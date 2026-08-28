@@ -14,8 +14,8 @@ struct FindForumsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 Text(T("Find forums")).font(.system(size: 28, weight: .heavy)).foregroundStyle(Color.dcInk)
-                if session.showRegions { section("Regional forums", regions, kind: "region") }
-                if session.showRoasters { section("Roaster forums", roasters, kind: "roaster") }
+                if session.showRegions { section(T("Regional forums"), regions, kind: "region") }
+                if session.showRoasters { section(T("Roaster forums"), roasters, kind: "roaster") }
                 if !loading && regions.isEmpty && roasters.isEmpty {
                     ContentUnavailableView(T("Nothing to discover"), systemImage: "map",
                                            description: Text(T("No regional or roaster forums are available yet.")))

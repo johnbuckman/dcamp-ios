@@ -160,7 +160,7 @@ struct ChatView: View {
                 }
             }
             if session.canPost {
-                InlineComposer(placeholder: "Message the room… (rich text, @mention)", model: composerModel, draftKey: "chat:main") { html in
+                InlineComposer(placeholder: T("Message the room… (rich text, @mention)"), model: composerModel, draftKey: "chat:main") { html in
                     await store.send(html: html)
                 }
             } else {
@@ -432,7 +432,7 @@ struct DMThreadView: View {
                     }
                 }
             }
-            InlineComposer(placeholder: "Write a direct message… (rich text, @mention)", model: composerModel, draftKey: "dm:\(convoID)") { html in
+            InlineComposer(placeholder: T("Write a direct message… (rich text, @mention)"), model: composerModel, draftKey: "dm:\(convoID)") { html in
                 await store.send(html: html)
             }
         }
@@ -457,7 +457,7 @@ struct DMThreadView: View {
             }
         }
         .sheet(isPresented: $showInvite) {
-            PeopleSearchSheet(title: "Invite") { r in
+            PeopleSearchSheet(title: T("Invite")) { r in
                 await api.dmInvite(convoID: convoID, participantIDs: [r.id], days: 30)
                 await store.reload()
                 return nil

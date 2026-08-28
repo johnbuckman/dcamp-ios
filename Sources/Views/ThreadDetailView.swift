@@ -10,7 +10,9 @@ struct ThreadDetailView: View {
 
     @Environment(SessionStore.self) private var session
     @Environment(Router.self) private var router
+    @Environment(ForumFilterStore.self) private var forumFilter
     @Environment(\.dismiss) private var dismiss
+    @State private var showFilter = false
     @State private var currentID: Int
     @State private var message: MessageDetail?
     @State private var comments: [Comment] = []
@@ -41,10 +43,37 @@ struct ThreadDetailView: View {
     private var nextSibling: Int? { guard let i = siblingIndex, i < router.threadSiblings.count - 1 else { return nil }; return router.threadSiblings[i + 1] }
     private func goto(_ id: Int) { message = nil; comments = []; currentID = id }
 
+    /// Comments after the forum Country filter: when the filter is on with a
+    /// country selection, hide comments whose author isn't in the chosen countries
+    /// (blank/unknown country counts as non-matching), mirroring the web thread.
+    private var visibleComments: [Comment] {
+        guard forumFilter.active, !forumFilter.countries.isEmpty else { return comments }
+        let set = Set(forumFilter.countries.map { $0.uppercased() })
+        return comments.filter { set.contains(($0.authorCountry ?? "").uppercased()) }
+    }
+    private var hiddenCount: Int { comments.count - visibleComments.count }
+
     /// The first comment posted after the viewer's previous visit (for the marker).
     private var firstUnreadCommentID: Int? {
         guard let lv = lastVisit, lv > 0 else { return nil }
-        return comments.first(where: { ($0.createdAt ?? 0) > lv })?.id
+        return visibleComments.first(where: { ($0.createdAt ?? 0) > lv })?.id
+    }
+
+    /// Thread-view filter chip: shows the remembered filter as an on/off toggle and,
+    /// while on, notes how many comments it hid. Tap the label to edit the filter.
+    @ViewBuilder private var threadFilterChip: some View {
+        if forumFilter.selected {
+            HStack(spacing: 8) {
+                let note = (forumFilter.on && !forumFilter.countries.isEmpty && hiddenCount > 0) ? " · \(hiddenCount) hidden" : ""
+                DCFilterPill(icon: "line.3.horizontal.decrease", title: forumFilter.label + note, active: forumFilter.on) {
+                    showFilter = true
+                }
+                DCFilterPill(icon: forumFilter.on ? "checkmark.circle" : "circle",
+                             title: forumFilter.on ? T("Filter on") : T("Filter off"), active: forumFilter.on) {
+                    forumFilter.toggleOn()
+                }
+            }
+        }
     }
 
     var body: some View {
@@ -52,13 +81,14 @@ struct ThreadDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 SummarizeBar(kind: .thread(currentID))
+                threadFilterChip
                 if let m = message {
                     messageCard(m)
-                    if !comments.isEmpty {
-                        Text("^[\(comments.count) comment](inflect: true)")
+                    if !visibleComments.isEmpty {
+                        Text((visibleComments.count == 1 ? T("{n} comment") : T("{n} comments")).replacingOccurrences(of: "{n}", with: "\(visibleComments.count)"))
                             .font(.system(size: 16, weight: .bold)).foregroundStyle(Color.dcInk).padding(.top, 4)
                         VStack(spacing: 0) {
-                            ForEach(comments) { c in
+                            ForEach(visibleComments) { c in
                                 if c.id == firstUnreadCommentID { SinceLastVisitDivider() }
                                 commentRow(c).id("c-\(c.id)")
                                 Divider().background(Color.dcLine)
@@ -91,6 +121,9 @@ struct ThreadDetailView: View {
                     }.disabled(nextSibling == nil)
                 }
             }
+        }
+        .sheet(isPresented: $showFilter) {
+            FilterSheet(onApply: {}).environment(session).environment(forumFilter)
         }
         .sheet(item: $editingMessage) { m in
             ComposeView(mode: .editThread(message: m)) { _ in Task { await load() } }
@@ -225,7 +258,7 @@ struct ThreadDetailView: View {
         if session.canPost {
             VStack(alignment: .leading, spacing: 8) {
                 Text(T("Add a comment")).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.dcInk)
-                InlineComposer(placeholder: "Write a comment… (rich text, @mention)", model: composerModel, draftKey: "thread:\(currentID)") { html in
+                InlineComposer(placeholder: T("Write a comment… (rich text, @mention)"), model: composerModel, draftKey: "thread:\(currentID)") { html in
                     do {
                         let r = try await api.createComment(messageID: currentID, bodyHTML: html)
                         await load()

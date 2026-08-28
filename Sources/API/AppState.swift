@@ -52,12 +52,25 @@ final class UIStrings {
 
     private var map: [String: String] = [:]
     var lang = "en"
+    /// Bumped each time the map (re)loads. Views that paint before `load()` finishes
+    /// (e.g. the home card grid at launch) read this so they re-render once the
+    /// server ui_map arrives — the global `T()` short-circuits on `lang=="en"` before
+    /// touching `map`, so it doesn't by itself create an observation dependency.
+    private(set) var revision = 0
 
     func load() async {
         guard lang != "en", !lang.isEmpty else { map = [:]; return }
-        // Send the app's chrome-string catalog so the server registers + translates each
-        // into the viewer's language (on-demand, then cached). Falls back to English per string.
-        map = await DcampAPI.shared.uiStrings(UIStringCatalog.all, lang: lang)
+        // 1. Pull the server's FULL ui_map — the few-hundred already-registered UI
+        //    strings for this language, including admin-authored labels the app never
+        //    hard-codes: board names + descriptions, category names, etc. (This is what
+        //    the web merges at bootstrap; without it, board names stayed English.)
+        var m = (try? await DcampAPI.shared.uiMap()) ?? [:]
+        // 2. Overlay the app's own chrome catalog so any string not yet in the map gets
+        //    registered + translated on demand (then cached server-side).
+        let catalog = await DcampAPI.shared.uiStrings(UIStringCatalog.all, lang: lang)
+        for (k, v) in catalog { m[k] = v }
+        map = m
+        revision += 1
     }
 
     /// Localize a UI string. Falls back to English when there's no translation

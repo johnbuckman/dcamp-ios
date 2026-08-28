@@ -55,7 +55,11 @@ struct Avatar: View {
         .frame(width: size, height: size)
         .clipShape(Circle())
         .contentShape(Circle())
-        .onTapGesture { if tappable, let id = person?.id, id > 0 { router?.personID = id } }
+        // Only attach a tap gesture when this avatar is meant to be tappable. An
+        // always-present onTapGesture (even with a no-op body) still consumes the
+        // tap, which swallowed the enclosing button — e.g. the top-bar avatar's
+        // "open Settings" button never fired.
+        .modifier(TapToOpenPerson(enabled: tappable, personID: person?.id, router: router))
     }
 
     private var initialsCircle: some View {
@@ -64,6 +68,21 @@ struct Avatar: View {
             Text(person?.initials ?? "?")
                 .font(.system(size: size * 0.4, weight: .semibold))
                 .foregroundStyle(.white)
+        }
+    }
+}
+
+/// Attaches a "tap → open this person's card" gesture ONLY when enabled, so a
+/// non-tappable avatar doesn't swallow taps meant for an enclosing button.
+private struct TapToOpenPerson: ViewModifier {
+    let enabled: Bool
+    let personID: Int?
+    let router: Router?
+    func body(content: Content) -> some View {
+        if enabled {
+            content.onTapGesture { if let id = personID, id > 0 { router?.personID = id } }
+        } else {
+            content
         }
     }
 }

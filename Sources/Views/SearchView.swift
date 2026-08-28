@@ -26,7 +26,7 @@ struct SearchView: View {
 
     private let api = DcampAPI.shared
     // NB: the server's DM search facet key is "pings" (not "dms").
-    private let allTypes: [(String, String)] = [("messages", "Threads"), ("comments", "Comments"), ("chat", "Chat"), ("pings", "DMs")]
+    private var allTypes: [(String, String)] { [("messages", T("Threads")), ("comments", T("Comments")), ("chat", T("Chat")), ("pings", T("DMs"))] }
 
     // MARK: derived
 
@@ -54,7 +54,7 @@ struct SearchView: View {
             }
             Section { filterBar }
             if !visiblePeople.isEmpty {
-                Section("People (\(visiblePeople.count))") {
+                Section(T("People") + " (\(visiblePeople.count))") {
                     ForEach(visiblePeople) { person in
                         Button { router.personID = person.id } label: {
                             HStack(spacing: 10) {
@@ -71,7 +71,7 @@ struct SearchView: View {
                 }
             }
             if !visibleResults.isEmpty {
-                Section("Results (\(visibleResults.count))") {
+                Section(T("Results") + " (\(visibleResults.count))") {
                     ForEach(visibleResults, id: \.uid) { hit in
                         Button { open(hit) } label: { SearchHitRow(hit: hit, terms: queryTerms) }
                     }
@@ -108,7 +108,7 @@ struct SearchView: View {
                     HStack(spacing: 8) {
                         if derekLoading { ProgressView().controlSize(.small) }
                         else { Image(systemName: "sparkles") }
-                        Text(derekLoading ? "Derek is thinking…" : "Ask Derek about “\(query)”")
+                        Text(derekLoading ? T("Derek is thinking…") : T("Ask Derek about “{q}”").replacingOccurrences(of: "{q}", with: query))
                             .font(.system(size: 15, weight: .semibold))
                     }
                     .foregroundStyle(Color.dcAccentInk)
@@ -156,14 +156,14 @@ struct SearchView: View {
                         Picker(T("Sort"), selection: $sortNewest) {
                             Text(T("Relevance")).tag(false); Text(T("Newest")).tag(true)
                         }
-                    } label: { DCFilterPill(icon: "arrow.up.arrow.down", title: sortNewest ? "Newest" : "Relevance", active: false) {}.allowsHitTesting(false) }
-                    DCFilterPill(icon: "checkmark.seal", title: "Best matches", active: goodOnly) { goodOnly.toggle() }
+                    } label: { DCFilterPill(icon: "arrow.up.arrow.down", title: sortNewest ? T("Newest") : T("Relevance"), active: false) {}.allowsHitTesting(false) }
+                    DCFilterPill(icon: "checkmark.seal", title: T("Best matches"), active: goodOnly) { goodOnly.toggle() }
                 }
             }
             if let forums = response.forums, forums.count > 1 {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
-                        DCFilterPill(icon: "square.grid.2x2", title: "All forums", active: selectedForum == nil) { selectedForum = nil }
+                        DCFilterPill(icon: "square.grid.2x2", title: T("All forums"), active: selectedForum == nil) { selectedForum = nil }
                         ForEach(forums) { f in
                             DCFilterPill(icon: "bubble.left", title: f.name, active: selectedForum == f.id) {
                                 selectedForum = (selectedForum == f.id) ? nil : f.id
@@ -238,7 +238,7 @@ struct SearchHitRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 TypePill(type: hit.type)
-                Text(highlighted(hit.title ?? "Untitled")).font(.system(size: 15, weight: .semibold))
+                Text(highlighted(hit.title ?? T("Untitled"))).font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Color.dcInk).lineLimit(1)
                 if hit.isUntranslated {
                     Text(T("not translated")).font(.system(size: 10)).foregroundStyle(Color.dcMuted)
@@ -289,7 +289,7 @@ struct TypePill: View {
             .background(tint.opacity(0.12), in: Capsule())
     }
     private var label: String {
-        switch type { case "comment": return "COMMENT"; case "chat": return "CHAT"; case "pings", "dm": return "DM"; default: return "THREAD" }
+        switch type { case "comment": return T("COMMENT"); case "chat": return T("CHAT"); case "pings", "dm": return T("DM"); default: return T("THREAD") }
     }
     private var tint: Color {
         switch type { case "comment": return .dcLink; case "chat": return .dcAccent; case "pings", "dm": return Color(red: 0.55, green: 0.36, blue: 0.86); default: return .dcInkSoft }

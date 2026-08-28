@@ -59,14 +59,16 @@ struct EmojiPicker: View {
     @State private var query = ""
 
     // (emoji, search keywords) grouped by category. Boosts = the web's quick favourites.
-    private static let categories: [(String, [(String, String)])] = [
-        ("Boosts", [("👍","thumbs up like yes good"),("🎉","party tada celebrate"),("❤️","heart love"),("😄","smile happy"),("🙏","thanks pray please"),("🔥","fire hot lit"),("👀","eyes look watching"),("🚀","rocket launch ship"),("💯","hundred perfect"),("😮","wow surprised"),("👏","clap applause"),("✅","check done yes"),("🙌","raise hands praise"),("💪","strong muscle")]),
-        ("Smileys", [("😀","grin happy"),("😊","blush smile"),("🙂","slight smile"),("😉","wink"),("😍","heart eyes love"),("🥰","adore love"),("😎","cool sunglasses"),("🤩","star struck"),("🤔","thinking hmm"),("😅","sweat laugh"),("😂","laugh cry"),("🤣","rofl"),("🙃","upside down"),("😴","sleep tired"),("😢","sad cry"),("😭","sob cry"),("🥳","party celebrate"),("🤯","mind blown"),("🫠","melting"),("🤗","hug")]),
-        ("Gestures", [("👎","thumbs down no"),("👌","ok perfect"),("✌️","peace victory"),("🤙","call shaka"),("🤞","fingers crossed hope"),("👋","wave hi bye"),("🤝","handshake deal"),("👉","point"),("✍️","write note")]),
-        ("Coffee & food", [("☕","coffee espresso"),("🍵","tea matcha"),("🫖","teapot"),("🧊","ice cold"),("🍫","chocolate"),("🍩","donut"),("🥛","milk"),("🍪","cookie"),("🧁","cupcake"),("🥐","croissant")]),
-        ("Objects", [("⭐️","star favorite"),("⚡️","lightning fast power"),("💡","idea bulb"),("🧠","brain smart"),("📈","chart up growth"),("🛠️","tools fix"),("🧪","test experiment"),("🎯","target goal"),("🥇","gold medal first"),("🔧","wrench fix"),("⚙️","gear settings"),("🔋","battery power")]),
-        ("Symbols", [("❌","x no wrong"),("❓","question"),("❗","exclaim important"),("➕","plus add"),("♻️","recycle"),("⚠️","warning"),("🔔","bell notify"),("💬","comment chat"),("🏆","trophy win")]),
-    ]
+    @MainActor private static var categories: [(String, [(String, String)])] {
+        [
+        (T("Boosts"), [("👍","thumbs up like yes good"),("🎉","party tada celebrate"),("❤️","heart love"),("😄","smile happy"),("🙏","thanks pray please"),("🔥","fire hot lit"),("👀","eyes look watching"),("🚀","rocket launch ship"),("💯","hundred perfect"),("😮","wow surprised"),("👏","clap applause"),("✅","check done yes"),("🙌","raise hands praise"),("💪","strong muscle")]),
+        (T("Smileys"), [("😀","grin happy"),("😊","blush smile"),("🙂","slight smile"),("😉","wink"),("😍","heart eyes love"),("🥰","adore love"),("😎","cool sunglasses"),("🤩","star struck"),("🤔","thinking hmm"),("😅","sweat laugh"),("😂","laugh cry"),("🤣","rofl"),("🙃","upside down"),("😴","sleep tired"),("😢","sad cry"),("😭","sob cry"),("🥳","party celebrate"),("🤯","mind blown"),("🫠","melting"),("🤗","hug")]),
+        (T("Gestures"), [("👎","thumbs down no"),("👌","ok perfect"),("✌️","peace victory"),("🤙","call shaka"),("🤞","fingers crossed hope"),("👋","wave hi bye"),("🤝","handshake deal"),("👉","point"),("✍️","write note")]),
+        (T("Coffee & food"), [("☕","coffee espresso"),("🍵","tea matcha"),("🫖","teapot"),("🧊","ice cold"),("🍫","chocolate"),("🍩","donut"),("🥛","milk"),("🍪","cookie"),("🧁","cupcake"),("🥐","croissant")]),
+        (T("Objects"), [("⭐️","star favorite"),("⚡️","lightning fast power"),("💡","idea bulb"),("🧠","brain smart"),("📈","chart up growth"),("🛠️","tools fix"),("🧪","test experiment"),("🎯","target goal"),("🥇","gold medal first"),("🔧","wrench fix"),("⚙️","gear settings"),("🔋","battery power")]),
+        (T("Symbols"), [("❌","x no wrong"),("❓","question"),("❗","exclaim important"),("➕","plus add"),("♻️","recycle"),("⚠️","warning"),("🔔","bell notify"),("💬","comment chat"),("🏆","trophy win")]),
+        ]
+    }
 
     private let cols = Array(repeating: GridItem(.flexible(), spacing: 6), count: 8)
 

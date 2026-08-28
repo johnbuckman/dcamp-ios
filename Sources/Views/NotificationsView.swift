@@ -1,5 +1,19 @@
 import SwiftUI
 
+/// Localized notification-kind label (the model's `kindLabel` is English-only and,
+/// living outside the Views layer, isn't registered for translation). Kept here so
+/// the phrases land in `UIStringCatalog`.
+@MainActor func notifKindLabel(_ notif: Notif) -> String {
+    switch notif.kind {
+    case "mention": return T("mentioned you")
+    case "dm": return T("sent you a message")
+    case "comment_own": return T("replied to your thread")
+    case "comment_followed": return T("commented on a thread you follow")
+    case "moved": return T("moved your post to its own thread")
+    default: return T("new activity")
+    }
+}
+
 /// Notification inbox (unread items from `notif_poll`). Tapping an item marks it
 /// seen and opens the target thread via `onOpen`.
 struct NotificationsView: View {
@@ -66,8 +80,8 @@ struct NotifRow: View {
                     .offset(x: 4, y: 4)
             }
             VStack(alignment: .leading, spacing: 3) {
-                (Text(notif.actor?.name ?? "Someone").fontWeight(.semibold)
-                 + Text(" \(notif.kindLabel)").foregroundColor(.secondary))
+                (Text(notif.actor?.name ?? T("Someone")).fontWeight(.semibold)
+                 + Text(" \(notifKindLabel(notif))").foregroundColor(.secondary))
                     .font(.subheadline)
                 if let preview = notif.preview, !preview.isEmpty {
                     Text(PlainText.strip(preview))
@@ -114,6 +128,6 @@ struct NotificationsBell: View {
                 }
             }
         }
-        .accessibilityLabel(count > 0 ? "Notifications, \(count) unread" : "Notifications")
+        .accessibilityLabel(count > 0 ? T("Notifications, {n} unread").replacingOccurrences(of: "{n}", with: "\(count)") : T("Notifications"))
     }
 }

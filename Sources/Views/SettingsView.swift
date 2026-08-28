@@ -36,10 +36,10 @@ struct SettingsView: View {
     @Environment(UIStrings.self) private var strings
 
     private let api = DcampAPI.shared
-    private let kinds: [(String, String)] = [
-        ("mention", "Mentions"), ("dm", "Direct messages"),
-        ("comment_own", "Replies to my threads"), ("comment_followed", "Threads I follow"),
-    ]
+    private var kinds: [(String, String)] {
+        [("mention", T("Mentions")), ("dm", T("Direct messages")),
+         ("comment_own", T("Replies to my threads")), ("comment_followed", T("Threads I follow"))]
+    }
 
     var body: some View {
         NavigationStack {
@@ -142,7 +142,7 @@ struct SettingsView: View {
         defer { uploadingAvatar = false }
         do {
             guard let data = try await item.loadTransferable(type: Data.self) else {
-                avatarError = "Couldn’t read that photo. Try a different one."; return
+                avatarError = T("Couldn’t read that photo. Try a different one."); return
             }
             let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
             let mime = item.supportedContentTypes.first?.preferredMIMEType ?? "image/jpeg"
@@ -157,10 +157,14 @@ struct SettingsView: View {
         }
     }
 
+    private func themeLabel(_ m: ThemeMode) -> String {
+        switch m { case .system: return T("System"); case .light: return T("Light"); case .dark: return T("Dark") }
+    }
+
     private var appearanceSection: some View {
         Section(T("Appearance")) {
             Picker(T("Theme"), selection: $themeRaw) {
-                ForEach(ThemeMode.allCases) { m in Text(m.label).tag(m.rawValue) }
+                ForEach(ThemeMode.allCases) { m in Text(themeLabel(m)).tag(m.rawValue) }
             }
             .pickerStyle(.segmented)
             .onChange(of: themeRaw) { _, v in
@@ -256,7 +260,7 @@ struct SettingsView: View {
             HStack {
                 Text(T("Account"))
                 Spacer()
-                Text(session.bcLinked ? "Linked" : "Not linked")
+                Text(session.bcLinked ? T("Linked") : T("Not linked"))
                     .foregroundStyle(session.bcLinked ? Color.dcAccentInk : Color.dcMuted)
             }
         }
@@ -265,7 +269,7 @@ struct SettingsView: View {
     private var accountSection: some View {
         Section {
             Button { showHelp = true } label: { Label(T("Help"), systemImage: "questionmark.circle") }
-            if let me = session.me { LabeledContent("dcamp id", value: "\(me.id)") }
+            if let me = session.me { LabeledContent(T("dcamp id"), value: "\(me.id)") }
             Button(role: .destructive) { showClose = true } label: { Text(T("Close account")) }
             Button(role: .destructive) { Task { await session.logout(); dismiss() } } label: {
                 Label(T("Sign out"), systemImage: "rectangle.portrait.and.arrow.right")

@@ -7,6 +7,7 @@ struct DcampApp: App {
     @State private var router = Router()
     private let strings = UIStrings.shared
     @State private var summaryPin = SummaryPin()
+    @State private var forumFilter = ForumFilterStore()
 
     var body: some Scene {
         WindowGroup {
@@ -15,6 +16,7 @@ struct DcampApp: App {
                 .environment(router)
                 .environment(strings)
                 .environment(summaryPin)
+                .environment(forumFilter)
                 .task { await session.start() }
         }
     }

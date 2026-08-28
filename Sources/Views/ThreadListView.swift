@@ -8,18 +8,20 @@ struct ThreadListView: View {
 
     @Environment(SessionStore.self) private var session
     @Environment(Router.self) private var router
+    @Environment(ForumFilterStore.self) private var forumFilter
     @State private var rows: [MessageRow] = []
     @State private var total = 0
     @State private var loading = false
-    @State private var filter: Filter = .all
     @State private var statusFilter: ProblemStatus = .unsolved
     @State private var composing = false
+    @State private var showFilter = false
 
     private let api = DcampAPI.shared
 
-    enum Filter: String { case all, popular, posted, commented, mentioned }
-    enum ProblemStatus: String, CaseIterable { case unsolved, solved, notaproblem, all
-        var label: String { switch self { case .unsolved: return "Unsolved"; case .solved: return "Solved"; case .notaproblem: return "Closed"; case .all: return "All" } }
+    enum ProblemStatus: String, CaseIterable { case unsolved, solved, notaproblem, all }
+
+    private func statusLabel(_ s: ProblemStatus) -> String {
+        switch s { case .unsolved: return T("Unsolved"); case .solved: return T("Solved"); case .notaproblem: return T("Closed"); case .all: return T("All") }
     }
 
     private var isProblems: Bool { board.name == "Problems" }
@@ -47,6 +49,10 @@ struct ThreadListView: View {
                 path.append(.thread(newID))
             }
         }
+        .sheet(isPresented: $showFilter) {
+            FilterSheet(onApply: { Task { await load(reset: true) } })
+                .environment(session).environment(forumFilter)
+        }
         .task(id: board.id) { await load(reset: true) }
         .refreshable { await load(reset: true) }
     }
@@ -58,7 +64,7 @@ struct ThreadListView: View {
                     .font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
                     .frame(width: 32, height: 32)
                     .background(ForumStyle.tint(board), in: RoundedRectangle(cornerRadius: 8))
-                Text(board.name).font(.system(size: 26, weight: .heavy)).foregroundStyle(Color.dcInk)
+                Text(T(board.name)).font(.system(size: 26, weight: .heavy)).foregroundStyle(Color.dcInk)
             }
             Spacer()
             if session.canPost {
@@ -74,19 +80,33 @@ struct ThreadListView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(ProblemStatus.allCases, id: \.self) { s in
-                            DCFilterPill(icon: statusIcon(s), title: s.label, active: statusFilter == s) {
+                            DCFilterPill(icon: statusIcon(s), title: statusLabel(s), active: statusFilter == s) {
                                 statusFilter = s; Task { await load(reset: true) }
                             }
                         }
                     }
                 }
             }
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    DCFilterPill(icon: "flame", title: "Popular", active: filter == .popular) { toggle(.popular) }
-                    DCFilterPill(icon: "square.and.pencil", title: "I posted", active: filter == .posted) { toggle(.posted) }
-                    DCFilterPill(icon: "bubble.left", title: "I commented", active: filter == .commented) { toggle(.commented) }
-                    DCFilterPill(icon: "at", title: "I'm mentioned", active: filter == .mentioned) { toggle(.mentioned) }
+            filterControl
+        }
+    }
+
+    /// A single "Filter" affordance that opens the shared FilterSheet (involvement
+    /// + Countries + saved filters). With a selection it becomes a chip showing the
+    /// active filter (tap to edit) plus an on/off toggle — matching the web.
+    @ViewBuilder private var filterControl: some View {
+        HStack(spacing: 8) {
+            if forumFilter.selected {
+                DCFilterPill(icon: "line.3.horizontal.decrease", title: forumFilter.label, active: forumFilter.on) {
+                    showFilter = true
+                }
+                DCFilterPill(icon: forumFilter.on ? "checkmark.circle" : "circle",
+                             title: forumFilter.on ? T("Filter on") : T("Filter off"), active: forumFilter.on) {
+                    forumFilter.toggleOn(); Task { await load(reset: true) }
+                }
+            } else {
+                DCFilterPill(icon: "line.3.horizontal.decrease", title: T("Filter"), active: false) {
+                    showFilter = true
                 }
             }
         }
@@ -120,23 +140,12 @@ struct ThreadListView: View {
         }
     }
 
-    private func toggle(_ f: Filter) {
-        filter = (filter == f) ? .all : f
-        Task { await load(reset: true) }
-    }
-
     private func load(reset: Bool) async {
         if loading { return }
         loading = true; defer { loading = false }
         let offset = reset ? 0 : rows.count
         var params = ["project_id": String(board.id), "offset": String(offset), "limit": "30"]
-        switch filter {
-        case .popular: params["popular"] = "1"
-        case .posted: params["mine"] = "posted"
-        case .commented: params["mine"] = "commented"
-        case .mentioned: params["mine"] = "mentioned"
-        case .all: break
-        }
+        params.merge(forumFilter.messageParams) { _, new in new }   // popular / mine / countries
         if isProblems && statusFilter != .all { params["status"] = statusFilter.rawValue }
         if let page: MessagesPage = try? await api.call("messages", params) {
             if reset { rows = page.messages } else { rows.append(contentsOf: page.messages) }

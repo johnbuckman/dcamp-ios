@@ -22,7 +22,7 @@ struct PersonCardView: View {
                             Section(T("Threads")) {
                                 ForEach(card.messages) { m in
                                     Button { open(messageID: m.id) } label: {
-                                        activityRow(m.subject ?? "Thread", m.createdAt)
+                                        activityRow(m.subject ?? T("Thread"), m.createdAt)
                                     }
                                 }
                             }
@@ -31,7 +31,7 @@ struct PersonCardView: View {
                             Section(T("Comments")) {
                                 ForEach(card.comments) { c in
                                     Button { open(messageID: c.messageId ?? c.id) } label: {
-                                        activityRow(c.messageSubject ?? PlainText.strip(c.body ?? "Comment"), c.createdAt)
+                                        activityRow(c.messageSubject ?? PlainText.strip(c.body ?? T("Comment")), c.createdAt)
                                     }
                                 }
                             }
@@ -43,7 +43,7 @@ struct PersonCardView: View {
                     ContentUnavailableView(T("Couldn’t load profile"), systemImage: "person.slash")
                 }
             }
-            .navigationTitle(card?.person.name ?? "Profile")
+            .navigationTitle(card?.person.name ?? T("Profile"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(T("Done")) { dismiss() } } }
         }
@@ -68,10 +68,10 @@ struct PersonCardView: View {
                 if muted { await api.personUnmute(id: card.person.id) } else { await api.personMute(id: card.person.id) }
                 muted.toggle()
             }
-        } label: { Label(muted ? "Unmute" : "Mute", systemImage: muted ? "speaker.wave.2" : "speaker.slash") }
+        } label: { Label(muted ? T("Unmute") : T("Mute"), systemImage: muted ? "speaker.wave.2" : "speaker.slash") }
 
         Button(role: .destructive) { reporting = true } label: { Label(T("Report"), systemImage: "flag") }
-            .alert("Report \(card.person.name)?", isPresented: $reporting) {
+            .alert(T("Report {name}?").replacingOccurrences(of: "{name}", with: card.person.name), isPresented: $reporting) {
                 TextField(T("Reason"), text: $reportReason)
                 Button(T("Report"), role: .destructive) {
                     Task { await api.reportPerson(id: card.person.id, reason: reportReason, url: "app://person/\(card.person.id)"); reportReason = "" }

@@ -38,6 +38,21 @@ enum AppConfig {
     /// fields (structured content) without changing SPA behaviour.
     static let nativeClient = "native"
 
+    /// Route one of our own hosted raster images through the on-demand resizer
+    /// (`/support/dcamp/img?src=…&w=…` → width-capped .avif, cached; the server
+    /// falls back to the original if it can't encode). Mirrors the web's `dcScale`:
+    /// only our own attachment/avatar tree and only resizable raster extensions are
+    /// scaled — foreign URLs and non-raster files are returned unchanged. The full
+    /// original stays one tap away in the zoom viewer.
+    static func scaledImageURL(_ url: URL, width: Int = 800) -> URL {
+        let path = url.path
+        guard path.hasPrefix("/support/dcamp/attachments/") || path.hasPrefix("/support/dcamp/avatars/") else { return url }
+        let ext = (path as NSString).pathExtension.lowercased()
+        guard ["jpg", "jpeg", "png", "webp", "bmp", "heic", "heif"].contains(ext) else { return url }
+        guard let enc = path.addingPercentEncoding(withAllowedCharacters: .alphanumerics) else { return url }
+        return URL(string: "\(assetBase)/support/dcamp/img?src=\(enc)&w=\(width)") ?? url
+    }
+
     // MARK: - OAuth2 browser login (/support/oauth2 provider)
     /// The app never handles the password: it opens the /support/oauth2 authorize
     /// page in a system browser (ASWebAuthenticationSession), the user logs in there

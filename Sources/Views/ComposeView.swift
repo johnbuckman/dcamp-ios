@@ -125,10 +125,10 @@ struct ComposeView: View {
     private var title: String {
         switch mode {
         case .newThread(let b): return b.name
-        case .comment: return "Reply"
-        case .editThread: return "Edit"
-        case .editComment: return "Edit comment"
-        case .editChat: return "Edit message"
+        case .comment: return T("Reply")
+        case .editThread: return T("Edit")
+        case .editComment: return T("Edit comment")
+        case .editChat: return T("Edit message")
         }
     }
 
@@ -196,7 +196,7 @@ struct ComposeView: View {
         Task {
             let html = await model.currentHTML().replacingOccurrences(of: AppConfig.assetBase, with: "")
             let subj = subject.trimmingCharacters(in: .whitespaces)
-            if PlainText.strip(html).isEmpty { posting = false; error = "Write something before posting."; return }
+            if PlainText.strip(html).isEmpty { posting = false; error = T("Write something before posting."); return }
             let sc = await api.subjectCheck(subject: subj, body: html)
             if !sc.isGood, let s = sc.suggestion, !s.isEmpty {
                 suggestedSubject = s; showSubjectSheet = true; posting = false; return
@@ -223,7 +223,7 @@ struct ComposeView: View {
             // host-relative (as the SPA stores them).
             let html = await model.currentHTML().replacingOccurrences(of: AppConfig.assetBase, with: "")
             if PlainText.strip(html).isEmpty {
-                error = "Write something before posting."
+                error = T("Write something before posting.")
                 return
             }
             do {
@@ -232,11 +232,11 @@ struct ComposeView: View {
                     let r = try await api.createMessage(projectID: board.id, categoryID: categoryID,
                                                         subject: subject.trimmingCharacters(in: .whitespaces),
                                                         bodyHTML: html)
-                    guard let id = r.id else { throw DcampAPI.APIError(message: r.error ?? "Failed", code: r.code) }
+                    guard let id = r.id else { throw DcampAPI.APIError(message: r.error ?? T("Failed"), code: r.code) }
                     markPosted(); onPosted(id); dismiss()
                 case .comment(let messageID, _):
                     let r = try await api.createComment(messageID: messageID, bodyHTML: html)
-                    guard let id = r.id else { throw DcampAPI.APIError(message: r.error ?? "Failed", code: r.code) }
+                    guard let id = r.id else { throw DcampAPI.APIError(message: r.error ?? T("Failed"), code: r.code) }
                     markPosted(); onPosted(id); dismiss()
                 case .editThread(let m):
                     try await api.messageUpdate(id: m.id, categoryID: m.categoryId ?? 0,

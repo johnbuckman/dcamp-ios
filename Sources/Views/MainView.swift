@@ -233,6 +233,7 @@ extension UINavigationController: @retroactive UIGestureRecognizerDelegate {
 struct ForumsHomeView: View {
     @Binding var path: [Dest]
     @Environment(SessionStore.self) private var session
+    @Environment(UIStrings.self) private var uiStrings
     @State private var dmUnread = 0
     @State private var chatStat: String? = nil
 
@@ -240,11 +241,14 @@ struct ForumsHomeView: View {
     private let cols = [GridItem(.adaptive(minimum: 240), spacing: 14)]
 
     var body: some View {
-        ScrollView {
+        // Re-render the translated board names/descriptions once the server ui_map
+        // finishes loading (it arrives after this view first paints at launch).
+        let _ = uiStrings.revision
+        return ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(T("Forums")).font(.system(size: 32, weight: .heavy)).foregroundStyle(Color.dcInk)
-                    Text("Forums: \(session.boards.count)").font(.system(size: 15)).foregroundStyle(Color.dcMuted)
+                    Text("\(T("Forums")): \(session.boards.count)").font(.system(size: 15)).foregroundStyle(Color.dcMuted)
                 }
 
                 SummarizeBar(kind: .home)
@@ -256,21 +260,21 @@ struct ForumsHomeView: View {
                     }
                 }
 
-                DCSectionLabel(text: "Other").padding(.top, 6)
+                DCSectionLabel(text: T("Other")).padding(.top, 6)
                 LazyVGrid(columns: cols, spacing: 14) {
                     Button { path.append(.chat) } label: {
                         OtherCard(icon: "bubble.left.and.bubble.right.fill", tint: Color.dcAccent,
-                                  title: "Chat Room", subtitle: "Live community chat for Decent espresso owners.",
+                                  title: T("Chat Room"), subtitle: T("Live community chat for Decent espresso owners."),
                                   badge: session.chatUnread, stat: chatStat)
                     }.buttonStyle(.plain)
                     Button { path.append(.dms) } label: {
                         OtherCard(icon: "envelope.fill", tint: Color(red: 0.55, green: 0.36, blue: 0.86),
-                                  title: "Direct Messages", subtitle: "Private conversations.", badge: dmUnread)
+                                  title: T("Direct Messages"), subtitle: T("Private conversations."), badge: dmUnread)
                     }.buttonStyle(.plain)
                     if session.showRegions || session.showRoasters {
                         Button { path.append(.find) } label: {
                             OtherCard(icon: "map.fill", tint: Color(red: 0.20, green: 0.60, blue: 0.86),
-                                      title: "Find forums", subtitle: "Discover regional & roaster forums.")
+                                      title: T("Find forums"), subtitle: T("Discover regional & roaster forums."))
                         }.buttonStyle(.plain)
                     }
                 }
@@ -288,8 +292,10 @@ struct ForumsHomeView: View {
     private func loadChatStat() async {
         let info = await DcampAPI.shared.chatInfo()
         chatStat = info.last24 > 0
-            ? "Messages: \(info.total) · \(info.last24) in the last 24h"
-            : "Messages: \(info.total)"
+            ? T("Messages: {t} · {r} in the last 24h")
+                .replacingOccurrences(of: "{t}", with: "\(info.total)")
+                .replacingOccurrences(of: "{r}", with: "\(info.last24)")
+            : T("Messages: {t}").replacingOccurrences(of: "{t}", with: "\(info.total)")
     }
 }
 
@@ -318,13 +324,21 @@ struct ForumCard: View {
                 .foregroundStyle(.white)
                 .frame(width: 38, height: 38)
                 .background(ForumStyle.tint(board), in: RoundedRectangle(cornerRadius: 10))
-            Text(board.name).font(.system(size: 19, weight: .bold)).foregroundStyle(Color.dcInk)
+            HStack(spacing: 6) {
+                Text(T(board.name)).font(.system(size: 19, weight: .bold)).foregroundStyle(Color.dcInk)
+                // Unread pip: new threads since this member's last visit (web `p.new_since`).
+                if let ns = board.newSince, ns > 0 {
+                    Text("\(ns)").font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                        .padding(.horizontal, 6).padding(.vertical, 1)
+                        .background(Color.dcAccent, in: Capsule())
+                }
+            }
             if let d = board.description, !d.isEmpty {
-                Text(d).font(.system(size: 15)).foregroundStyle(Color.dcInkSoft)
+                Text(T(d)).font(.system(size: 15)).foregroundStyle(Color.dcInkSoft)
                     .fixedSize(horizontal: false, vertical: true)
             }
             if let n = board.messageCount {
-                Text("Messages: \(n)").font(.system(size: 14)).foregroundStyle(Color.dcMuted).padding(.top, 2)
+                Text("\(T("Messages")): \(n)").font(.system(size: 14)).foregroundStyle(Color.dcMuted).padding(.top, 2)
             }
         }
         .frame(maxWidth: .infinity, minHeight: 180, maxHeight: .infinity, alignment: .topLeading)
@@ -371,7 +385,7 @@ struct NotifToast: View {
                 else { Image(systemName: notif.icon).foregroundStyle(Color.dcAccent).frame(width: 32) }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(notif.actor?.name ?? "dcamp").font(.system(size: 14, weight: .bold)).foregroundStyle(Color.dcInk)
-                    Text(notif.kindLabel).font(.system(size: 13)).foregroundStyle(Color.dcInkSoft).lineLimit(1)
+                    Text(notifKindLabel(notif)).font(.system(size: 13)).foregroundStyle(Color.dcInkSoft).lineLimit(1)
                 }
                 Spacer()
                 Image(systemName: "chevron.right").font(.caption).foregroundStyle(Color.dcMuted)

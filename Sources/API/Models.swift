@@ -121,8 +121,10 @@ struct MessageRow: Codable, Identifiable, Hashable {
 
     var isPinned: Bool { (pinned ?? 0) != 0 }
     var displaySubject: String { (subjectTr?.isEmpty == false ? subjectTr! : subject) }
-    /// Body preview, translated when available.
-    var displayPreview: String { (bodyTr?.isEmpty == false ? bodyTr! : (preview ?? "")) }
+    /// Body preview, translated when available. The server sends this as rich HTML
+    /// (`<p dir="auto">…`, `<div>…`, links); strip the tags so the one-line row shows
+    /// clean text instead of literal markup.
+    var displayPreview: String { PlainText.strip(bodyTr?.isEmpty == false ? bodyTr! : (preview ?? "")) }
     var thumbURL: URL? { Person.absURL(thumb?.src) }
     /// Recent-comment preview, translated when available.
     var recentCommentText: String? {
@@ -172,6 +174,7 @@ struct MessageDetail: Codable, Identifiable {
     var bodyTr: String?            // server-translated into the viewer's language
     var lang: String?
     var author: Person?
+    var authorCountry: String?     // author's ISO-2, for the forum Country filter (thread hiding)
     var boosts: Boosts?
 
     var html: String { (bodyHtml?.isEmpty == false ? bodyHtml! : (body ?? "")) }
@@ -188,6 +191,7 @@ struct Comment: Codable, Identifiable {
     var createdAt: Int?
     var streaming: Int?
     var author: Person?
+    var authorCountry: String?    // author's ISO-2, for the forum Country filter (thread hiding)
     var boosts: Boosts?
 
     var html: String { (bodyHtml?.isEmpty == false ? bodyHtml! : (body ?? "")) }
