@@ -499,7 +499,7 @@ struct DMBubble: View {
             if showSender, !message.isMine, let name = message.sender?.name, !name.isEmpty {
                 Text(name).font(.system(size: 11, weight: .bold)).foregroundStyle(senderTint)
             }
-            TranslatableText(original: message.html, translated: message.bodyTr)
+            TranslatableText(original: message.html, translated: message.bodyTr, linkColor: message.isMine ? .white : .dcLink)
                 .font(.system(size: 15))
                 .foregroundStyle(message.isMine ? Color.white : Color.dcInk)
             Text(RelativeTime.string(message.createdAt))
