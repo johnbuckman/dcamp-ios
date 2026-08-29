@@ -6,7 +6,7 @@ import SwiftUI
 // intercepts). Unknown tags are dropped; their text is kept.
 enum Inline {
 
-    static func parse(_ html: String) -> AttributedString {
+    static func parse(_ html: String, linkColor: Color = .dcLink) -> AttributedString {
         var out = AttributedString()
         var bold = false, italic = false, code = false, under = false
         var hrefStack: [String] = []
@@ -28,7 +28,7 @@ enum Inline {
             if let bg = colorStack.last(where: { $0.bg != nil })?.bg { run.backgroundColor = bg }
             if let href = hrefStack.last {
                 let isMention = href.hasPrefix("#/p/")
-                run.foregroundColor = isMention ? .dcAccentInk : .dcLink   // green mention, blue link
+                run.foregroundColor = isMention ? .dcAccentInk : linkColor   // green mention, link color
                 if isMention { run.font = font.bold() } else { run.underlineStyle = .single }
                 if let url = routeURL(href) { run.link = url }
             } else if let fg = colorStack.last(where: { $0.fg != nil })?.fg {
