@@ -218,7 +218,6 @@ struct ZoomableTrixImage: View {
             switch phase {
             case .success(let img):
                 img.resizable().scaledToFit()
-                    .frame(maxWidth: 320, maxHeight: 420)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.dcLine, lineWidth: 1))
                     .contentShape(Rectangle())
@@ -235,6 +234,11 @@ struct ZoomableTrixImage: View {
                 TrixBlockView.placeholder(system: "photo", text: nil).overlay(ProgressView())
             }
         }
+        // Fixed cell size: the lazy-stack layout must not change when the image
+        // loads, or the scroll-anchored message list re-lays out forever (100% CPU
+        // update storm on chats with screenshots — diag 2026-08-29). The zoom
+        // viewer still shows the full original.
+        .frame(width: 300, height: 300)
         .fullScreenCover(isPresented: $showFull) { ImageZoomViewer(url: url) }
     }
 }
