@@ -7,9 +7,12 @@ struct TrixContentView: View {
     /// Optional override for message links (used for in-place thread navigation).
     /// Person links (`#/p/id`) always route through the shared Router.
     var onRoute: ((String) -> Void)? = nil
+    /// Link colour override — used by blue DM bubbles so links stay visible on
+    /// the bubble (white links on the blue bubble, like iMessage).
+    var linkColor: Color = .dcLink
 
     @Environment(Router.self) private var router
-    private var blocks: [TrixBlock] { TrixParser.parse(html) }
+    private var blocks: [TrixBlock] { TrixParser.parse(html, linkColor: linkColor) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -53,6 +56,7 @@ struct TranslatableText: View {
     let original: String
     var translated: String?
     var onRoute: ((String) -> Void)? = nil
+    var linkColor: Color = .dcLink
     @State private var showOriginal = false
 
     private var hasTranslation: Bool {
@@ -62,12 +66,12 @@ struct TranslatableText: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            TrixContentView(html: (hasTranslation && !showOriginal) ? translated! : original, onRoute: onRoute)
+            TrixContentView(html: (hasTranslation && !showOriginal) ? translated! : original, onRoute: onRoute, linkColor: linkColor)
             if hasTranslation {
                 Button(showOriginal ? T("Show translation") : T("Translated · Show original")) {
                     showOriginal.toggle()
                 }
-                .font(.caption).foregroundStyle(Color.dcLink)
+                .font(.caption).foregroundStyle(linkColor)
             }
         }
     }

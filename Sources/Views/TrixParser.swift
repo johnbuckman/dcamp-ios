@@ -31,7 +31,7 @@ enum TrixBlock: Identifiable {
 
 enum TrixParser {
 
-    static func parse(_ html: String) -> [TrixBlock] {
+    static func parse(_ html: String, linkColor: Color = .dcLink) -> [TrixBlock] {
         var blocks: [TrixBlock] = []
         // Walk top-level block elements in document order.
         let scanner = BlockScanner(html)
@@ -41,26 +41,26 @@ enum TrixParser {
                 if let img = firstImageURL(inner) { blocks.append(.image(img)) }
                 else if let yt = youtubeID(from: inner, attrs: attrs) { blocks.append(.youtube(id: yt)) }
                 else {
-                    let a = Inline.parse(inner)
+                    let a = Inline.parse(inner, linkColor: linkColor)
                     if !a.characters.isEmpty { blocks.append(.paragraph(a)) }
                 }
             case "h1", "h2", "h3":
-                blocks.append(.heading(Inline.parse(inner), level: Int(String(tag.dropFirst())) ?? 2))
+                blocks.append(.heading(Inline.parse(inner, linkColor: linkColor), level: Int(String(tag.dropFirst())) ?? 2))
             case "ul", "ol":
-                let items = listItems(inner)
+                let items = listItems(inner, linkColor: linkColor)
                 if !items.isEmpty { blocks.append(.list(items: items, ordered: tag == "ol")) }
             case "blockquote":
-                blocks.append(.quote(parse(inner)))
+                blocks.append(.quote(parse(inner, linkColor: linkColor)))
             case "figure", "div":
                 if inner.range(of: "<hr", options: .caseInsensitive) != nil { blocks.append(.rule) }
                 else if let img = firstImageURL(inner) { blocks.append(.image(img)) }
                 else if let yt = youtubeID(from: inner, attrs: attrs) { blocks.append(.youtube(id: yt)) }
                 else {
-                    let a = Inline.parse(inner)
+                    let a = Inline.parse(inner, linkColor: linkColor)
                     if !a.characters.isEmpty { blocks.append(.paragraph(a)) }
                 }
             case "table":
-                let rows = tableRows(inner)
+                let rows = tableRows(inner, linkColor: linkColor)
                 if !rows.isEmpty { blocks.append(.table(rows: rows)) }
             case "hr":
                 blocks.append(.rule)
@@ -69,13 +69,13 @@ enum TrixParser {
             case "iframe":
                 if let yt = youtubeID(from: "", attrs: attrs) { blocks.append(.youtube(id: yt)) }
             default:
-                let a = Inline.parse(inner)
+                let a = Inline.parse(inner, linkColor: linkColor)
                 if !a.characters.isEmpty { blocks.append(.paragraph(a)) }
             }
         }
         // Fallback: no recognizable blocks → treat the whole thing as one paragraph.
         if blocks.isEmpty {
-            let a = Inline.parse(html)
+            let a = Inline.parse(html, linkColor: linkColor)
             if !a.characters.isEmpty { blocks.append(.paragraph(a)) }
         }
         return blocks
@@ -83,13 +83,13 @@ enum TrixParser {
 
     // MARK: list items
 
-    private static func listItems(_ inner: String) -> [AttributedString] {
+    private static func listItems(_ inner: String, linkColor: Color) -> [AttributedString] {
         var items: [AttributedString] = []
         let ns = inner as NSString
         let re = try! NSRegularExpression(pattern: "<li[^>]*>(.*?)</li>", options: [.dotMatchesLineSeparators, .caseInsensitive])
         for m in re.matches(in: inner, range: NSRange(location: 0, length: ns.length)) {
             let s = ns.substring(with: m.range(at: 1))
-            let a = Inline.parse(s)
+            let a = Inline.parse(s, linkColor: linkColor)
             if !a.characters.isEmpty { items.append(a) }
         }
         return items
@@ -97,7 +97,7 @@ enum TrixParser {
 
     // MARK: table
 
-    private static func tableRows(_ inner: String) -> [[AttributedString]] {
+    private static func tableRows(_ inner: String, linkColor: Color) -> [[AttributedString]] {
         var rows: [[AttributedString]] = []
         let ns = inner as NSString
         let trRe = try! NSRegularExpression(pattern: "<tr[^>]*>(.*?)</tr>", options: [.dotMatchesLineSeparators, .caseInsensitive])
@@ -107,7 +107,7 @@ enum TrixParser {
             let rns = rowHTML as NSString
             var cells: [AttributedString] = []
             for cm in cellRe.matches(in: rowHTML, range: NSRange(location: 0, length: rns.length)) {
-                cells.append(Inline.parse(rns.substring(with: cm.range(at: 1))))
+                cells.append(Inline.parse(rns.substring(with: cm.range(at: 1)), linkColor: linkColor))
             }
             if !cells.isEmpty { rows.append(cells) }
         }
