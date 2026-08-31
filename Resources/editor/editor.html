@@ -410,11 +410,15 @@
   // Called by Swift for "Quote & reply": insert a blockquote then a fresh line.
   window.dcampInsertQuote = function (h) {
     var ed = editorEl.editor;
-    var doc = ed.getDocument();
-    ed.setSelectedRange([doc.getLength(), doc.getLength()]);
-    if (doc.getLength() > 0) ed.insertLineBreak();
-    ed.insertHTML("<blockquote>" + (h || "") + "</blockquote>");
-    ed.insertLineBreak();
+    try {
+      editorEl.focus();
+      var len = ed.getDocument().getLength();
+      ed.setSelectedRange([len, len]);
+      if ((input.value || "").trim()) ed.insertLineBreak();
+      ed.insertHTML(h || "");
+      ed.insertLineBreak();
+      ed.insertLineBreak();
+    } catch (e) {}
     editorEl.focus();
   };
 

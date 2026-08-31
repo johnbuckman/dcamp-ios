@@ -195,7 +195,7 @@ struct ThreadDetailView: View {
         Menu {
             Button { copyLink(messageID: m.id) } label: { Label(T("Copy link"), systemImage: "link") }
             if session.canPost {
-                Button { quote(m.html) } label: { Label(T("Quote & reply"), systemImage: "quote.opening") }
+                Button { quote(m.html, aid: m.author?.id, aname: m.author?.name, src: "#/message/\(currentID)") } label: { Label(T("Quote & reply"), systemImage: "quote.opening") }
             }
             if canModify(m.author?.id) {
                 Button { editingMessage = m } label: { Label(T("Edit"), systemImage: "pencil") }
@@ -241,7 +241,7 @@ struct ThreadDetailView: View {
         Menu {
             Button { copyLink(messageID: currentID, commentID: c.id) } label: { Label(T("Copy link"), systemImage: "link") }
             if session.canPost {
-                Button { quote(c.html) } label: { Label(T("Quote & reply"), systemImage: "quote.opening") }
+                Button { quote(c.html, aid: c.author?.id, aname: c.author?.name, src: "#/message/\(currentID)?c=\(c.id)") } label: { Label(T("Quote & reply"), systemImage: "quote.opening") }
             }
             if canModify(c.author?.id) {
                 Button { editingComment = c } label: { Label(T("Edit"), systemImage: "pencil") }
@@ -304,13 +304,25 @@ struct ThreadDetailView: View {
         if let commentID { s += "?c=\(commentID)" }
         UIPasteboard.general.string = s
     }
-    /// Insert a blockquote of the given content into the reply composer + scroll to it.
-    private func quote(_ html: String) {
-        let text = PlainText.strip(html)
-            .replacingOccurrences(of: "&", with: "&amp;")
-            .replacingOccurrences(of: "<", with: "&lt;")
-            .replacingOccurrences(of: ">", with: "&gt;")
-        composerModel.insertQuote("<p>\(text)</p>")
+    /// Insert a web-parity quote into the reply composer + scroll to it: an "@Author wrote:"
+    /// attribution line (author mention + source link) then a blockquote of the plain-text
+    /// selection — mirroring dcamp.js insertQuote.
+    private func quote(_ html: String, aid: Int?, aname: String?, src: String?) {
+        func esc(_ s: String) -> String {
+            s.replacingOccurrences(of: "&", with: "&amp;")
+                .replacingOccurrences(of: "<", with: "&lt;")
+                .replacingOccurrences(of: ">", with: "&gt;")
+                .replacingOccurrences(of: "\"", with: "&quot;")
+                .replacingOccurrences(of: "'", with: "&#39;")
+        }
+        let body = "<blockquote>" + esc(PlainText.strip(html))
+            .replacingOccurrences(of: "\n+", with: "<br>", options: .regularExpression) + "</blockquote>"
+        var out = body
+        if let aid, let aname, !aname.isEmpty {
+            let wrote = (src?.isEmpty == false) ? "<a href=\"\(esc(src!))\">\(esc(T("wrote"))):</a>" : "\(esc(T("wrote"))):"
+            out = "<a href=\"#/p/\(aid)\">@\(esc(aname))</a> \(wrote)<br>" + body
+        }
+        composerModel.insertQuote(out)
         scrollTick += 1
     }
     private func setStatus(_ status: String, for id: Int) { Task { await api.messageSetStatus(id: id, status: status); await load() } }
