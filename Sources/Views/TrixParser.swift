@@ -11,6 +11,7 @@ enum TrixBlock: Identifiable {
     case quote([TrixBlock])
     case list(items: [AttributedString], ordered: Bool)
     case image(URL)
+    case video(URL)
     case youtube(id: String)
     case table(rows: [[AttributedString]])
     case rule
@@ -22,6 +23,7 @@ enum TrixBlock: Identifiable {
         case .quote(let b): return "q:\(b.count)"
         case .list(let i, let o): return "l\(o ? "o" : "u"):\(i.count)"
         case .image(let u): return "img:\(u.absoluteString)"
+        case .video(let u): return "vid:\(u.absoluteString)"
         case .youtube(let i): return "yt:\(i)"
         case .table(let r): return "tbl:\(r.count)x\(r.first?.count ?? 0)"
         case .rule: return "hr"
@@ -39,6 +41,7 @@ enum TrixParser {
             switch tag {
             case "p":
                 if let img = firstImageURL(inner) { blocks.append(.image(img)) }
+                else if let vid = firstVideoURL(inner, attrs) { blocks.append(.video(vid)) }
                 else if let yt = youtubeID(from: inner, attrs: attrs) { blocks.append(.youtube(id: yt)) }
                 else {
                     let a = Inline.parse(inner)
@@ -54,6 +57,7 @@ enum TrixParser {
             case "figure", "div":
                 if inner.range(of: "<hr", options: .caseInsensitive) != nil { blocks.append(.rule) }
                 else if let img = firstImageURL(inner) { blocks.append(.image(img)) }
+                else if let vid = firstVideoURL(inner, attrs) { blocks.append(.video(vid)) }
                 else if let yt = youtubeID(from: inner, attrs: attrs) { blocks.append(.youtube(id: yt)) }
                 else {
                     let a = Inline.parse(inner)
@@ -119,6 +123,23 @@ enum TrixParser {
     private static func firstImageURL(_ html: String) -> URL? {
         guard let src = firstMatch(in: html, pattern: "<img[^>]+src=\"([^\"]+)\"") else { return nil }
         return Person.absURL(src)
+    }
+
+    // A video attachment, in either shape dcamp emits: a native Trix upload
+    // (<figure data-trix-content-type="video/…"><a href="…/attachments/u…/clip.mov">)
+    // or a Basecamp-imported one (<a class="dc-file" href="…/clip.mp4" download>).
+    // Detected by a href to a known video extension, or a data-trix video attachment.
+    // (Videos already offloaded to YouTube arrive as youtube blocks, handled separately.)
+    private static let videoExt = "mov|mp4|m4v|m2ts|mts|webm|avi|mkv|3gp|wmv|flv"
+    private static func firstVideoURL(_ html: String, _ attrs: String) -> URL? {
+        if let href = firstMatch(in: html, pattern: "<a[^>]+href=\"([^\"]+\\.(?:\(videoExt))(?:\\?[^\"]*)?)\"") {
+            return Person.absURL(href)
+        }
+        if (attrs + html).range(of: "data-trix-content-type=\"video", options: .caseInsensitive) != nil,
+           let href = firstMatch(in: html, pattern: "href=\"([^\"]+)\"") {
+            return Person.absURL(href)
+        }
+        return nil
     }
 
     private static func youtubeID(from html: String, attrs: String) -> String? {

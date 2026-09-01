@@ -1,4 +1,5 @@
 import SwiftUI
+import AVKit
 
 /// Renders parsed Trix HTML as native SwiftUI. Internal `dcamp://route` links are
 /// handed to `onRoute`; external links open in the browser.
@@ -113,6 +114,9 @@ struct TrixBlockView: View {
         case .image(let url):
             ZoomableTrixImage(url: url)
 
+        case .video(let url):
+            VideoBlockView(url: url)
+
         case .youtube(let id):
             YouTubeCard(id: id)
 
@@ -192,6 +196,62 @@ struct YouTubeCard: View {
             .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// A video attachment (member phone clip / screen recording) that wasn't offloaded
+/// to YouTube — previously rendered as a bare "attachment" link the native app
+/// couldn't play. Shows a play card; tapping opens a full-screen AVKit player.
+/// (Attachment URLs are fetched the same way as inline images, which already work.)
+struct VideoBlockView: View {
+    let url: URL
+    @State private var playing = false
+    private var name: String { url.lastPathComponent.removingPercentEncoding ?? url.lastPathComponent }
+
+    var body: some View {
+        Button { playing = true } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10).fill(Color.black)
+                VStack(spacing: 8) {
+                    Image(systemName: "play.circle.fill")
+                        .font(.system(size: 52)).foregroundStyle(.white.opacity(0.92)).shadow(radius: 6)
+                    Text(name).font(.caption).foregroundStyle(.white.opacity(0.8))
+                        .lineLimit(1).truncationMode(.middle).padding(.horizontal, 14)
+                }
+            }
+            .frame(height: 200).frame(maxWidth: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+        .fullScreenCover(isPresented: $playing) { VideoPlayerSheet(url: url) }
+    }
+}
+
+/// Full-screen player for a tapped video attachment; autoplays, ✕ to close.
+struct VideoPlayerSheet: View {
+    let url: URL
+    @Environment(\.dismiss) private var dismiss
+    @State private var player: AVPlayer?
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            VideoPlayer(player: player)
+                .ignoresSafeArea()
+                .onAppear { let p = AVPlayer(url: url); player = p; p.play() }
+                .onDisappear { player?.pause(); player = nil }
+            VStack {
+                HStack {
+                    Spacer()
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 30)).foregroundStyle(.white.opacity(0.9)).shadow(radius: 4)
+                    }
+                    .padding(16)
+                }
+                Spacer()
+            }
+        }
     }
 }
 

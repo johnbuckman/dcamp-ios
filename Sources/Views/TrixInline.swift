@@ -100,18 +100,39 @@ enum Inline {
         return (fg: value("color"), bg: value("background-color") ?? value("background"))
     }
 
+    /// A near-black or near-white text colour carries no real colour intent and
+    /// breaks in one theme (a near-black picked in light mode is invisible on the
+    /// dark background, and vice-versa). Returning nil for these lets the text
+    /// inherit the theme label colour, which is legible in BOTH modes — the native
+    /// counterpart of the web legibility guard. (Native renders on system/bubble
+    /// backgrounds we don't resolve per-run, so this handles the common extreme
+    /// case rather than a full WCAG contrast check against the exact background.)
+    static func isIllegibleExtreme(_ r: Double, _ g: Double, _ b: Double) -> Bool {
+        return (r < 40 && g < 40 && b < 40) || (r > 220 && g > 220 && b > 220)
+    }
+    private static func hexRGB(_ hex: String) -> (Double, Double, Double)? {
+        var h = hex; if h.hasPrefix("#") { h.removeFirst() }
+        if h.count == 3 { h = h.map { "\($0)\($0)" }.joined() }
+        guard h.count == 6, let n = Int(h, radix: 16) else { return nil }
+        return (Double((n >> 16) & 0xff), Double((n >> 8) & 0xff), Double(n & 0xff))
+    }
+
     /// Parse a single CSS colour value (#hex, rgb()/rgba(), or a few named).
     static func cssColor(_ raw: String) -> Color? {
         let v = raw.trimmingCharacters(in: .whitespaces).lowercased()
-        if v.hasPrefix("#") { return Color(hex: v) }
+        if v.hasPrefix("#") {
+            if let (r, g, b) = hexRGB(v) {
+                if isIllegibleExtreme(r, g, b) { return nil }   // near-black/near-white → inherit theme colour
+                return Color(.sRGB, red: r / 255, green: g / 255, blue: b / 255, opacity: 1)
+            }
+            return Color(hex: v)
+        }
         if v.hasPrefix("rgb") {
             let nums = v.components(separatedBy: CharacterSet(charactersIn: "0123456789.").inverted).filter { !$0.isEmpty }
             if nums.count >= 3, let r = Double(nums[0]), let g = Double(nums[1]), let b = Double(nums[2]) {
-                // The native composer used to stamp the editor's default text colour as
-                // rgba(0,0,0,0.847) (near-black) — ignore near-black/near-white rgb() so
-                // it inherits the bubble/column colour (white on a "mine" bubble) instead
-                // of rendering black-on-blue. Deliberate palette colours are #hex, not rgb().
-                if (r < 20 && g < 20 && b < 20) || (r > 235 && g > 235 && b > 235) { return nil }
+                // Near-black/near-white (e.g. the composer's default rgba(0,0,0,0.847))
+                // → inherit the theme/bubble colour instead of rendering black-on-blue.
+                if isIllegibleExtreme(r, g, b) { return nil }
                 let a = nums.count >= 4 ? (Double(nums[3]) ?? 1) : 1
                 return Color(.sRGB, red: r/255, green: g/255, blue: b/255, opacity: a)
             }
