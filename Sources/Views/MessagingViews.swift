@@ -389,7 +389,9 @@ final class DMThreadStore {
         realtime.start(interval: 6) { [weak self] in await self?.reload() }
     }
     func stop() { realtime.stop() }
-    func reload() async { if let t = try? await api.dmThread(convoID: convoID) { thread = t } }
+    func reload() async {
+        if let t = try? await api.dmThread(convoID: convoID) { thread = t }
+    }
     var sendError: String?
     func send(html: String) async -> Bool {
         guard !PlainText.strip(html).isEmpty else { return false }
@@ -412,7 +414,10 @@ struct DMThreadView: View {
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(spacing: 10) {
+                    // Plain VStack (not lazy): LazyVStack + defaultScrollAnchor(.bottom)
+                    // loops forever placing subviews (100% CPU update storm) once the
+                    // thread overflows the viewport — ChatView's VStack+anchor works.
+                    VStack(spacing: 10) {
                         ForEach(store.thread.messages) { m in
                             DMBubble(message: m, showSender: store.thread.members.count > 2).id(m.id)
                         }
@@ -499,7 +504,7 @@ struct DMBubble: View {
             if showSender, !message.isMine, let name = message.sender?.name, !name.isEmpty {
                 Text(name).font(.system(size: 11, weight: .bold)).foregroundStyle(senderTint)
             }
-            TranslatableText(original: message.html, translated: message.bodyTr)
+            TranslatableText(original: message.html, translated: message.bodyTr, linkColor: message.isMine ? .white : .dcLink)
                 .font(.system(size: 15))
                 .foregroundStyle(message.isMine ? Color.white : Color.dcInk)
             Text(RelativeTime.string(message.createdAt))
