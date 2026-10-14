@@ -117,8 +117,8 @@ struct TrixBlockView: View {
         case .video(let url):
             VideoBlockView(url: url)
 
-        case .youtube(let id):
-            YouTubeCard(id: id)
+        case .youtube(let id, let portrait):
+            YouTubeCard(id: id, portrait: portrait)
 
         case .table(let rows):
             TrixTableView(rows: rows)
@@ -175,6 +175,7 @@ struct TrixTableView: View {
 /// the video (YouTube app or browser).
 struct YouTubeCard: View {
     let id: String
+    var portrait = false     // phone-portrait video / Short → 9:16 card, not pillar-boxed 16:9
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -191,8 +192,8 @@ struct YouTubeCard: View {
                     .foregroundStyle(.white.opacity(0.9))
                     .shadow(radius: 6)
             }
-            .frame(height: 200)
-            .frame(maxWidth: .infinity)
+            .frame(width: portrait ? 225 : nil, height: portrait ? 400 : 200)
+            .frame(maxWidth: portrait ? nil : .infinity)
             .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
@@ -263,11 +264,17 @@ struct ZoomableTrixImage: View {
     let url: URL
     @State private var showFull = false
     @State private var useOriginal = false
+    @State private var retries = 0          // failed loads of the original so far
+    @State private var attempt = 0          // bumps the AsyncImage identity to force a reload
 
     /// Inline display uses a width-capped .avif variant (fast to fetch); the
     /// zoom viewer always opens the full original. If the scaled variant fails to
     /// load we fall back to the original inline too, so images never break.
+    /// A failure is often transient (a slow first-time server encode, a dropped
+    /// request on a flaky network), so the original is retried with a short backoff
+    /// before we give up and show "Image unavailable".
     private var displayURL: URL { useOriginal ? url : AppConfig.scaledImageURL(url) }
+    private static let maxRetries = 2
 
     var body: some View {
         AsyncImage(url: displayURL) { phase in
@@ -280,8 +287,15 @@ struct ZoomableTrixImage: View {
                     .contentShape(Rectangle())
                     .onTapGesture { showFull = true }
             case .failure:
-                if useOriginal {
+                if useOriginal && retries >= Self.maxRetries {
                     TrixBlockView.placeholder(system: "photo", text: T("Image unavailable"))
+                } else if useOriginal {
+                    // the original failed too → wait a moment and try it again
+                    TrixBlockView.placeholder(system: "photo", text: nil).overlay(ProgressView())
+                        .task(id: attempt) {
+                            try? await Task.sleep(nanoseconds: UInt64(1_500_000_000 * (retries + 1)))
+                            retries += 1; attempt += 1
+                        }
                 } else {
                     // scaled variant failed → retry with the untouched original
                     TrixBlockView.placeholder(system: "photo", text: nil).overlay(ProgressView())
@@ -291,6 +305,7 @@ struct ZoomableTrixImage: View {
                 TrixBlockView.placeholder(system: "photo", text: nil).overlay(ProgressView())
             }
         }
+        .id(attempt)
         .fullScreenCover(isPresented: $showFull) { ImageZoomViewer(url: url) }
     }
 }

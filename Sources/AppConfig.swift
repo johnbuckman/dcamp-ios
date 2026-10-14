@@ -44,7 +44,10 @@ enum AppConfig {
     /// only our own attachment/avatar tree and only resizable raster extensions are
     /// scaled — foreign URLs and non-raster files are returned unchanged. The full
     /// original stays one tap away in the zoom viewer.
-    static func scaledImageURL(_ url: URL, width: Int = 800) -> URL {
+    /// Default width 1200 = the web's `dcScale(src, 1200)`: variants are cached per
+    /// width, so matching the web means the app reuses the variant the web already
+    /// built instead of paying a cold server-side encode on first view.
+    static func scaledImageURL(_ url: URL, width: Int = 1200) -> URL {
         let path = url.path
         guard path.hasPrefix("/support/dcamp/attachments/") || path.hasPrefix("/support/dcamp/avatars/") else { return url }
         let ext = (path as NSString).pathExtension.lowercased()

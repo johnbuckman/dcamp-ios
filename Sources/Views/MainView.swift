@@ -21,7 +21,7 @@ struct MainView: View {
     @State private var showNotifs = false
     @State private var notifStore = NotificationsStore()
     @State private var toastNotif: Notif?
-    @State private var lastNotifCount = -1
+    @State private var pendingNotifRoute: String?   // opened from the inbox sheet; pushed on dismiss
     @State private var showHelp = false
 
     var body: some View {
@@ -41,19 +41,20 @@ struct MainView: View {
             }
         }
         .animation(.spring(duration: 0.3), value: toastNotif?.id)
-        .onChange(of: notifStore.items.count) { _, new in
-            // Toast the newest notification when the unread list grows mid-session.
-            if lastNotifCount >= 0, new > lastNotifCount, let newest = notifStore.items.max(by: { $0.id < $1.id }) {
-                toastNotif = newest
-                let id = newest.id
-                Task { try? await Task.sleep(nanoseconds: 4_000_000_000); if toastNotif?.id == id { toastNotif = nil } }
-            }
-            lastNotifCount = new
+        .onChange(of: notifStore.toast?.id) { _, _ in
+            // Toast each freshly-arrived notification (notif_poll already acked it).
+            guard let newest = notifStore.toast else { return }
+            toastNotif = newest
+            let id = newest.id
+            Task { try? await Task.sleep(nanoseconds: 4_000_000_000); if toastNotif?.id == id { toastNotif = nil } }
         }
         // Settings is a full-screen page (like the web), not a small window overlay.
         .fullScreenCover(isPresented: $showAccount) { SettingsView().environment(session).environment(router) }
-        .sheet(isPresented: $showNotifs) {
-            NotificationsView(store: notifStore) { router.threadID = $0 }
+        .sheet(isPresented: $showNotifs, onDismiss: {
+            // push AFTER the sheet is gone (pushing mid-dismiss is dropped — gotcha 7)
+            if let r = pendingNotifRoute { pendingNotifRoute = nil; openRoute(r) }
+        }) {
+            NotificationsView(store: notifStore) { pendingNotifRoute = $0 }
                 .environment(session).environment(router)
         }
         .sheet(item: personSheet) { ref in
@@ -105,10 +106,16 @@ struct MainView: View {
 
     private func openNotif(_ n: Notif) {
         toastNotif = nil
-        if let id = DcampRoute.messageID(from: n.route) { path.append(.thread(id)) }
-        else if let id = DcampRoute.dmID(from: n.route) { path.append(.dm(id)) }
-        else if let id = DcampRoute.personID(from: n.route) { router.personID = id }
-        Task { await notifStore.markSeen([n.id]) }
+        if let r = n.route { openRoute(r) }
+        Task { await notifStore.refreshUnread() }
+    }
+
+    /// Navigate to a dcamp route ("#/message/1?c=2", "#/pings/5", "#/chat", "#/p/9").
+    private func openRoute(_ route: String) {
+        if let id = DcampRoute.messageID(from: route) { path.append(.thread(id)) }
+        else if let id = DcampRoute.dmID(from: route) { path.append(.dm(id)) }
+        else if let id = DcampRoute.personID(from: route) { router.personID = id }
+        else if route.contains("/chat") { path.append(.chat) }
     }
 
     private func startLive() async {
@@ -131,6 +138,7 @@ struct MainView: View {
             case "dm": path = [.dm(125)]
             case "search": path = [.search]
             case "settings": showAccount = true
+            case "notifs": showNotifs = true
             case "help": showHelp = true
             case "ipadsummary": summaryPin.kind = .home; summaryPin.title = "Diaspora summary"
             default: break

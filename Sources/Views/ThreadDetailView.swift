@@ -17,6 +17,10 @@ struct ThreadDetailView: View {
     @State private var message: MessageDetail?
     @State private var comments: [Comment] = []
     @State private var lastVisit: Int?
+    @State private var showAll = false          // "Load all messages" pressed for this thread
+    @State private var collapsedTotal: Int?     // real comment count while the server sent a collapsed window
+    @State private var collapsedHead = 10       // how many of `comments` are the head (the rest is the tail)
+    @State private var loadingAll = false
     @State private var loading = false
     @State private var editingMessage: MessageDetail?
     @State private var editingComment: Comment?
@@ -41,7 +45,10 @@ struct ThreadDetailView: View {
     private var siblingIndex: Int? { router.threadSiblings.firstIndex(of: currentID) }
     private var prevSibling: Int? { guard let i = siblingIndex, i > 0 else { return nil }; return router.threadSiblings[i - 1] }
     private var nextSibling: Int? { guard let i = siblingIndex, i < router.threadSiblings.count - 1 else { return nil }; return router.threadSiblings[i + 1] }
-    private func goto(_ id: Int) { message = nil; comments = []; currentID = id }
+    private func goto(_ id: Int) { message = nil; comments = []; resetCollapse(); currentID = id }
+    private func resetCollapse() { showAll = false; collapsedTotal = nil; collapsedHead = 10 }
+    /// Comments the server left out of a collapsed thread (0 when uncollapsed).
+    private var hiddenMiddle: Int { max(0, (collapsedTotal ?? 0) - comments.count) }
 
     /// Comments after the forum Country filter: when the filter is on with a
     /// country selection, hide comments whose author isn't in the chosen countries
@@ -85,13 +92,15 @@ struct ThreadDetailView: View {
                 if let m = message {
                     messageCard(m)
                     if !visibleComments.isEmpty {
-                        Text((visibleComments.count == 1 ? T("{n} comment") : T("{n} comments")).replacingOccurrences(of: "{n}", with: "\(visibleComments.count)"))
+                        let shownCount = hiddenMiddle > 0 ? visibleComments.count + hiddenMiddle : visibleComments.count
+                        Text((shownCount == 1 ? T("{n} comment") : T("{n} comments")).replacingOccurrences(of: "{n}", with: "\(shownCount)"))
                             .font(.system(size: 16, weight: .bold)).foregroundStyle(Color.dcInk).padding(.top, 4)
                         VStack(spacing: 0) {
                             ForEach(visibleComments) { c in
                                 if c.id == firstUnreadCommentID { SinceLastVisitDivider() }
                                 commentRow(c).id("c-\(c.id)")
                                 Divider().background(Color.dcLine)
+                                if hiddenMiddle > 0, c.id == headBoundaryID { loadAllRow }
                             }
                         }
                         .dcCard(padding: 4)
@@ -336,7 +345,7 @@ struct ThreadDetailView: View {
     private func moveOfftopic(_ cid: Int) {
         Task {
             let r = await api.offtopicMove(commentID: cid)
-            if let newID = r.id { message = nil; currentID = newID }   // navigate to the new thread in place
+            if let newID = r.id { message = nil; resetCollapse(); currentID = newID }   // navigate to the new thread in place
             else { await load() }
         }
     }
@@ -347,27 +356,86 @@ struct ThreadDetailView: View {
         let path = token.hasPrefix("/") ? String(token.dropFirst()) : token
         let parts = path.split(separator: "/")
         if parts.count >= 2, parts[0] == "message", let id = Int(parts[1].prefix(while: { $0.isNumber })) {
-            message = nil; currentID = id
+            message = nil; resetCollapse(); currentID = id
         }
+    }
+
+    /// `message` params: all=1 once "Load all messages" was pressed; c=<cid> for a deep
+    /// link into the opening thread, so the server never collapses away the anchor.
+    private var messageParams: [String: String] {
+        var p = ["id": String(currentID)]
+        if showAll { p["all"] = "1" }
+        if let a = commentAnchor, currentID == messageID { p["c"] = String(a) }
+        return p
     }
 
     private func load() async {
         loading = true; defer { loading = false }
-        if let resp: MessageResponse = try? await api.call("message", ["id": String(currentID)]) {
+        if let resp: MessageResponse = try? await api.call("message", messageParams) {
             message = resp.message
             comments = resp.comments ?? []
             lastVisit = resp.lastVisit
+            applyCollapse(resp)
         }
+    }
+    private func applyCollapse(_ resp: MessageResponse) {
+        if resp.isCollapsed {
+            collapsedTotal = resp.total
+            collapsedHead = resp.head ?? 10
+        } else {
+            collapsedTotal = nil
+        }
+    }
+    private func loadAll() {
+        loadingAll = true
+        showAll = true
+        Task { await load(); loadingAll = false }
+    }
+
+    /// Last comment of the collapsed head window — the "Load all" row goes after it.
+    private var headBoundaryID: Int? {
+        guard hiddenMiddle > 0, collapsedHead > 0, comments.count >= collapsedHead else { return nil }
+        return comments[collapsedHead - 1].id
+    }
+    private var loadAllRow: some View {
+        Button { loadAll() } label: {
+            HStack(spacing: 8) {
+                if loadingAll { ProgressView().controlSize(.small) } else { Image(systemName: "ellipsis") }
+                Text(T("Load all messages") + " (\(hiddenMiddle))").font(.system(size: 14, weight: .semibold))
+            }
+            .frame(maxWidth: .infinity).padding(.vertical, 12)
+            .foregroundStyle(Color.dcAccentInk)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(loadingAll)
+        .overlay(alignment: .bottom) { Divider().background(Color.dcLine) }
     }
 
     /// Poll for new/streaming comments without flashing the whole view. Only
     /// reassigns when something actually changed (count or a streaming body).
+    /// A COLLAPSED thread polls append-only (merge by id): the fresh response is again
+    /// head+tail, so a plain replace would shuffle the window and never removes the
+    /// unshown middle — new comments are appended, changed bodies updated in place.
     private func pollUpdate() async {
-        guard let resp: MessageResponse = try? await api.call("message", ["id": String(currentID)]) else { return }
+        guard let resp: MessageResponse = try? await api.call("message", messageParams) else { return }
         let fresh = resp.comments ?? []
-        let changed = fresh.count != comments.count ||
-            zip(fresh, comments).contains { $0.body != $1.body || $0.streaming != $1.streaming }
-        if changed { comments = fresh }
+        if resp.isCollapsed || collapsedTotal != nil {
+            var merged = comments
+            var changed = false
+            let index = Dictionary(uniqueKeysWithValues: merged.enumerated().map { ($1.id, $0) })
+            for c in fresh {
+                if let i = index[c.id] {
+                    if merged[i].body != c.body || merged[i].streaming != c.streaming { merged[i] = c; changed = true }
+                } else { merged.append(c); changed = true }
+            }
+            if changed { comments = merged }
+            if resp.isCollapsed { collapsedTotal = max(resp.total ?? 0, comments.count) } else { collapsedTotal = nil; comments = fresh }
+        } else {
+            let changed = fresh.count != comments.count ||
+                zip(fresh, comments).contains { $0.body != $1.body || $0.streaming != $1.streaming }
+            if changed { comments = fresh }
+        }
         if resp.message.boosts?.list.count != message?.boosts?.list.count { message = resp.message }
     }
 }

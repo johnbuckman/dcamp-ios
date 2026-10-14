@@ -136,7 +136,7 @@ pass with the `SIMCTL_CHILD_` prefix:
 |---|---|
 | `DCAMP_SMOKE_EMAIL` / `_PW` | auto-login (skips the login UI) |
 | `DCAMP_SMOKE_MSG` / `_POST` / `_NOTIF` / `_M56` | run API smokes, print results to **stderr** |
-| `DCAMP_SHOT_SCREEN` = `board｜thread｜shortthread｜chat｜dms｜dm｜settings｜ipadsummary` | jump straight to a screen **and skip the push prompt** |
+| `DCAMP_SHOT_SCREEN` = `board｜thread｜shortthread｜chat｜dms｜dm｜settings｜notifs｜ipadsummary` (`DCAMP_SHOT_THREAD=<id>` picks the thread) | jump straight to a screen **and skip the push prompt** |
 
 ```bash
 env SIMCTL_CHILD_DCAMP_SMOKE_EMAIL="$TEST_EMAIL" \

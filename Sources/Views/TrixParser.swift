@@ -12,7 +12,7 @@ enum TrixBlock: Identifiable {
     case list(items: [AttributedString], ordered: Bool)
     case image(URL)
     case video(URL)
-    case youtube(id: String)
+    case youtube(id: String, portrait: Bool)
     case table(rows: [[AttributedString]])
     case rule
 
@@ -24,7 +24,7 @@ enum TrixBlock: Identifiable {
         case .list(let i, let o): return "l\(o ? "o" : "u"):\(i.count)"
         case .image(let u): return "img:\(u.absoluteString)"
         case .video(let u): return "vid:\(u.absoluteString)"
-        case .youtube(let i): return "yt:\(i)"
+        case .youtube(let i, let p): return "yt:\(i)\(p ? ":p" : "")"
         case .table(let r): return "tbl:\(r.count)x\(r.first?.count ?? 0)"
         case .rule: return "hr"
         }
@@ -40,9 +40,10 @@ enum TrixParser {
         while let (tag, inner, attrs) = scanner.next() {
             switch tag {
             case "p":
-                if let img = firstImageURL(inner) { blocks.append(.image(img)) }
+                if let yt = offloadedYouTube(inner, attrs) { blocks.append(.youtube(id: yt.id, portrait: yt.portrait)) }
+                else if let img = firstImageURL(inner) { blocks.append(.image(img)) }
                 else if let vid = firstVideoURL(inner, attrs) { blocks.append(.video(vid)) }
-                else if let yt = youtubeID(from: inner, attrs: attrs) { blocks.append(.youtube(id: yt)) }
+                else if let yt = youtubeInfo(from: inner, attrs: attrs) { blocks.append(.youtube(id: yt.id, portrait: yt.portrait)) }
                 else {
                     let a = Inline.parse(inner)
                     if !a.characters.isEmpty { blocks.append(.paragraph(a)) }
@@ -56,9 +57,10 @@ enum TrixParser {
                 blocks.append(.quote(parse(inner)))
             case "figure", "div":
                 if inner.range(of: "<hr", options: .caseInsensitive) != nil { blocks.append(.rule) }
+                else if let yt = offloadedYouTube(inner, attrs) { blocks.append(.youtube(id: yt.id, portrait: yt.portrait)) }
                 else if let img = firstImageURL(inner) { blocks.append(.image(img)) }
                 else if let vid = firstVideoURL(inner, attrs) { blocks.append(.video(vid)) }
-                else if let yt = youtubeID(from: inner, attrs: attrs) { blocks.append(.youtube(id: yt)) }
+                else if let yt = youtubeInfo(from: inner, attrs: attrs) { blocks.append(.youtube(id: yt.id, portrait: yt.portrait)) }
                 else {
                     let a = Inline.parse(inner)
                     if !a.characters.isEmpty { blocks.append(.paragraph(a)) }
@@ -70,8 +72,10 @@ enum TrixParser {
                 blocks.append(.rule)
             case "img":
                 if let u = attrValue(attrs, "src").flatMap(Person.absURL) { blocks.append(.image(u)) }
+            case "a":   // only YouTube embed anchors reach here (see BlockScanner)
+                if let yt = youtubeInfo(from: inner, attrs: attrs) { blocks.append(.youtube(id: yt.id, portrait: yt.portrait)) }
             case "iframe":
-                if let yt = youtubeID(from: "", attrs: attrs) { blocks.append(.youtube(id: yt)) }
+                if let yt = youtubeInfo(from: "", attrs: attrs) { blocks.append(.youtube(id: yt.id, portrait: yt.portrait)) }
             default:
                 let a = Inline.parse(inner)
                 if !a.characters.isEmpty { blocks.append(.paragraph(a)) }
@@ -142,10 +146,27 @@ enum TrixParser {
         return nil
     }
 
-    private static func youtubeID(from html: String, attrs: String) -> String? {
+    /// A server-embedded YouTube video: the offload/import anchor
+    /// `<a class="dc-youtube" data-yt=… href=youtu.be/…><img src=i.ytimg.com/…>` carries
+    /// a thumbnail <img>, so it must be recognised BEFORE the generic image check or it
+    /// renders as a still picture with no play button.
+    private static func offloadedYouTube(_ html: String, _ attrs: String) -> (id: String, portrait: Bool)? {
+        let hay = attrs + html
+        guard hay.contains("dc-youtube") || hay.contains("data-yt=") || hay.contains("i.ytimg.com/vi/") else { return nil }
+        return youtubeInfo(from: html, attrs: attrs)
+    }
+
+    /// YouTube id + orientation. Portrait (9:16) = a /shorts/ URL, or the
+    /// data-portrait="1" the server bakes onto offloaded phone-portrait videos
+    /// (dcamp_yt_embed_html) — orientation can't be read from a watch/youtu.be id.
+    static func youtubeInfo(from html: String, attrs: String) -> (id: String, portrait: Bool)? {
         for hay in [attrs, html] {
+            if let id = firstMatch(in: hay, pattern: "youtube\\.com/shorts/([A-Za-z0-9_-]{6,})") {
+                return (id, true)
+            }
             if let id = firstMatch(in: hay, pattern: "(?:youtube\\.com/(?:embed/|watch\\?v=)|youtu\\.be/)([A-Za-z0-9_-]{6,})") {
-                return id
+                let portrait = (attrs + html).range(of: "data-portrait=\"1\"") != nil
+                return (id, portrait)
             }
         }
         return nil
@@ -185,6 +206,17 @@ private final class BlockScanner {
             let tagContent = s.substring(with: NSRange(location: lt.location + 1, length: gt.location - lt.location - 1))
             i = gt.location + 1
             let tag = tagName(tagContent)
+            // A top-level YouTube embed anchor (server offload/import markup:
+            // <a class="dc-youtube" data-yt=… data-portrait=…><img ytimg thumb></a>) is a
+            // block of its own — otherwise it's skipped as inline and its thumbnail <img>
+            // surfaces as a plain still picture.
+            if tag == "a" && (tagContent.contains("dc-youtube") || tagContent.contains("data-yt=")) {
+                let cr = s.range(of: "</a>", options: .caseInsensitive, range: NSRange(location: i, length: s.length - i))
+                let end = cr.location == NSNotFound ? s.length : cr.location
+                let inner = s.substring(with: NSRange(location: i, length: end - i))
+                i = cr.location == NSNotFound ? s.length : cr.location + cr.length
+                return ("a", inner, tagContent)
+            }
             guard Self.blockTags.contains(tag) else { continue }
             let attrs = tagContent
 

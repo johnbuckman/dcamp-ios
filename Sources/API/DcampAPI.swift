@@ -133,6 +133,22 @@ actor DcampAPI {
         _ = try? await rawData("notif_seen", ["ids": ids.map(String.init).joined(separator: ",")])
     }
 
+    // Recent-activity feed (shared read state with the web bell / Recent activity).
+    func activityFeed(limit: Int = 80) async throws -> ActivityFeedResult {
+        try await call("activity_feed", ["limit": String(limit)])
+    }
+    func activityUnread() async throws -> Int {
+        let r: ActivityUnreadResult = try await call("activity_unread")
+        return r.unread ?? 0
+    }
+    /// Mark feed rows read. `ids` = the rows' notif ids (CSV); `boosts` clears the
+    /// reaction roundup. Both empty/false = mark EVERYTHING read.
+    func activityRead(ids: String = "", boosts: Bool = false) async {
+        var p = ["ids": ids]
+        if boosts { p["boosts"] = "1" }
+        _ = try? await rawData("activity_read", p)
+    }
+
     func notifPrefsGet() async throws -> NotifPrefs {
         try await call("notif_prefs_get")
     }

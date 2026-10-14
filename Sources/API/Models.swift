@@ -203,6 +203,15 @@ struct MessageResponse: Codable {
     var lastVisit: Int?          // epoch of the viewer's previous visit → since-last-visit marker
     var message: MessageDetail
     var comments: [Comment]?
+    // Long threads (>20 comments) come back COLLAPSED: only the first `head` + last
+    // `tail` comments, with `total` = the real count. Re-request with all=1 for every
+    // comment (the web's "Load all messages" button). A deep link (c=<cid>) is never
+    // collapsed. 0/1 ints, per the dcamp JSON convention.
+    var collapsed: Int?
+    var total: Int?
+    var head: Int?
+    var tail: Int?
+    var isCollapsed: Bool { (collapsed ?? 0) != 0 }
 }
 
 // MARK: - Auth / envelope
@@ -358,6 +367,62 @@ struct Notif: Codable, Identifiable {
         default: return "bell"
         }
     }
+}
+
+/// One row of the recent-activity feed (`activity_feed`) — the same unread/read
+/// inbox the web's top-bar bell and "Recent activity" panel show, so read state is
+/// shared across devices. Unread comment replies on one thread arrive ROLLED UP
+/// (`more` = how many others; `ids` = every notif id the row stands for).
+/// `newthread` / `boostsum` rows are synthesised server-side and carry no ids.
+struct ActivityItem: Codable, Identifiable, Hashable {
+    var kind: String?
+    var subject: String?
+    var route: String?
+    var createdAt: Int?
+    var preview: String?
+    var read: Int?
+    var more: Int?
+    var ids: String?
+    var actor: Person?
+
+    var id: String { (ids?.isEmpty == false) ? ids! : "\(kind ?? "")|\(route ?? "")|\(createdAt ?? 0)" }
+    var isRead: Bool { (read ?? 0) != 0 }
+    var moreCount: Int { more ?? 0 }
+
+    var icon: String {
+        switch kind {
+        case "mention": return "at"
+        case "dm": return "envelope"
+        case "chat": return "bubble.left.and.bubble.right"
+        case "newthread": return "megaphone"
+        case "boostsum": return "heart"
+        case "moved": return "arrow.triangle.branch"
+        default: return "arrowshape.turn.up.left"
+        }
+    }
+    /// Badge colour per kind (matches the web's .act-badge-* palette).
+    var badgeHex: String {
+        switch kind {
+        case "mention": return "#7c3aed"
+        case "dm": return "#0ea5e9"
+        case "chat": return "#16a34a"
+        case "newthread": return "#ea8a0c"
+        case "boostsum": return "#d9463e"
+        case "moved": return "#8a8579"
+        default: return "#1f6fd6"
+        }
+    }
+}
+
+struct ActivityFeedResult: Codable {
+    var ok: Bool?
+    var items: [ActivityItem] = []
+    var unread: Int?
+}
+
+struct ActivityUnreadResult: Codable {
+    var ok: Bool?
+    var unread: Int?
 }
 
 struct NotifPollResult: Codable {
