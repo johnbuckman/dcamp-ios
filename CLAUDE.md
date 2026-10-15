@@ -106,6 +106,20 @@ are in Claude's private memory / ask John — deliberately not in this repo.
    Push in the sheet's `onDismiss`.
 8. **Recursive `@ViewBuilder` can't return `some View`** — use a concrete type (`TrixBlockView`).
 9. Simulator: a stuck permission alert survives app reinstall — `simctl erase` clears it.
+10. **Never set `.font` on an `AttributedString` run in `Inline`** — a run font overrides the
+    view's `.font(…)`, which silently pinned every heading and every screen's 15/16pt body to
+    `.body` (v1.19 fix). Use `inlinePresentationIntent` (bold/italic/code/mention) instead.
+11. **Trix renderer spacing mirrors the web CSS, not a fixed gap.** Thread/comment bodies have
+    `p{margin:0}`, so a blank line is an explicit `<p><br></p>` (→ `.spacer`, one line) — a
+    `Text("\n")` is TWO lines tall. A trailing `<br>` adds no line in a browser (trim one "\n"),
+    and HTML source whitespace collapses (plain-text bodies with no tags keep their newlines).
+    Per-context paragraph gap = `paragraphSpacing` (0 thread/comment, 4 chat, 6 DM, 8 summaries).
+12. **Never collapse a block to "its first image".** Trix keeps a post's text AND photos in ONE
+    `<div>`; until v1.19 the parser turned any div with an `<img>` into just that image, so most
+    image posts lost every word. `splitMixed` now emits text/media blocks in order, `BlockScanner`
+    emits loose inline content between blocks as pseudo-`<p>`s (DM/chat bodies are often bare
+    `text<br><br>text`), and a wrapper `<div>` takes its BALANCED close + recurses. Regression
+    check: run old vs new `TrixParser` over live bodies and compare rendered-word coverage.
 
 ---
 

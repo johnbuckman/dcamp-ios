@@ -120,7 +120,7 @@ struct MessageRow: Codable, Identifiable, Hashable {
     var recentComment: RecentComment?
 
     var isPinned: Bool { (pinned ?? 0) != 0 }
-    var displaySubject: String { (subjectTr?.isEmpty == false ? subjectTr! : subject) }
+    var displaySubject: String { PlainText.collapse(subjectTr?.isEmpty == false ? subjectTr! : subject) }
     /// Body preview, translated when available. The server sends this as rich HTML
     /// (`<p dir="auto">…`, `<div>…`, links); strip the tags so the one-line row shows
     /// clean text instead of literal markup.
@@ -178,7 +178,7 @@ struct MessageDetail: Codable, Identifiable {
     var boosts: Boosts?
 
     var html: String { (bodyHtml?.isEmpty == false ? bodyHtml! : (body ?? "")) }
-    var displaySubject: String { (subjectTr?.isEmpty == false ? subjectTr! : subject) }
+    var displaySubject: String { PlainText.collapse(subjectTr?.isEmpty == false ? subjectTr! : subject) }
 }
 
 struct Comment: Codable, Identifiable {

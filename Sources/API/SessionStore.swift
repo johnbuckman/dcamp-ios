@@ -116,6 +116,7 @@ final class SessionStore {
                 case .youtube: return "yt"
                 case .table(let r): return "table(\(r.count)x\(r.first?.count ?? 0))"
                 case .rule: return "hr"
+                case .spacer(let n): return "sp\(n)"
                 }
             }
             FileHandle.standardError.write(Data(

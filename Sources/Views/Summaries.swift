@@ -80,7 +80,7 @@ struct SummarizeBar: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Label(T("You were mentioned"), systemImage: "at.circle.fill")
                                 .font(.system(size: 13, weight: .bold)).foregroundStyle(Color.dcAccentInk)
-                            TrixContentView(html: mine).font(.system(size: 14))
+                            TrixContentView(html: mine, paragraphSpacing: 8).font(.system(size: 14))
                         }
                         .padding(12)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -91,7 +91,7 @@ struct SummarizeBar: View {
                             HStack(spacing: 8) { ProgressView(); Text(T("Summarizing…")).font(.footnote).foregroundStyle(Color.dcMuted) }
                                 .frame(maxWidth: .infinity).padding(.vertical, 20)
                         } else if let html {
-                            TrixContentView(html: html).font(.system(size: 15))
+                            TrixContentView(html: html, paragraphSpacing: 8).font(.system(size: 15))
                         }
                     }
                 }
@@ -143,7 +143,7 @@ struct SummarySidebarView: View {
                 if loading {
                     ProgressView().padding(.top, 40)
                 } else if let html {
-                    TrixContentView(html: html).font(.system(size: 14)).padding(14)
+                    TrixContentView(html: html, paragraphSpacing: 8).font(.system(size: 14)).padding(14)
                 }
             }
         }
@@ -205,7 +205,7 @@ struct EmailSummariesView: View {
             }
             Section(T("Preview")) {
                 if loading { HStack { ProgressView(); Text(T("Generating…")).foregroundStyle(Color.dcMuted) } }
-                else if let d = digest { TrixContentView(html: d).font(.system(size: 14)) }
+                else if let d = digest { TrixContentView(html: d, paragraphSpacing: 8).font(.system(size: 14)) }
                 else { Button(T("Preview my digest")) { Task { await preview() } } }
             }
         }

@@ -102,7 +102,7 @@ struct SearchView: View {
                     Image(systemName: "sparkles").foregroundStyle(Color.dcAccent)
                     Text(T("Derek says")).font(.system(size: 14, weight: .bold)).foregroundStyle(Color.dcInk)
                 }
-                TrixContentView(html: a, onRoute: routeToken).font(.system(size: 15))
+                TrixContentView(html: a, onRoute: routeToken, paragraphSpacing: 8).font(.system(size: 15))
             } else {
                 Button { askDerek() } label: {
                     HStack(spacing: 8) {

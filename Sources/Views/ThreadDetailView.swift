@@ -242,7 +242,7 @@ struct ThreadDetailView: View {
                     Spacer(minLength: 0)
                     commentMenu(c)
                 }
-                TranslatableText(original: c.html, translated: c.bodyTr, onRoute: route)
+                TranslatableText(original: c.html, translated: c.bodyTr, onRoute: route).font(.system(size: 16))
                 BoostBar(type: "comment", id: c.id, boosts: c.boosts ?? Boosts()) { await load() }
             }
         }

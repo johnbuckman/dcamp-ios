@@ -15,6 +15,11 @@ enum TrixBlock: Identifiable {
     case youtube(id: String, portrait: Bool)
     case table(rows: [[AttributedString]])
     case rule
+    /// An empty paragraph (`<p><br></p>`, `<div><br></div>`, `<p>&nbsp;</p>`): pasted /
+    /// Basecamp-5 content uses these as its ONLY paragraph gaps (the web has
+    /// `p{margin:0}`), so it renders as exactly `lines` blank lines — never as a text
+    /// block, which SwiftUI draws one line too tall and the stack pads on both sides.
+    case spacer(lines: Int)
 
     var id: String {
         switch self {
@@ -27,6 +32,7 @@ enum TrixBlock: Identifiable {
         case .youtube(let i, let p): return "yt:\(i)\(p ? ":p" : "")"
         case .table(let r): return "tbl:\(r.count)x\(r.first?.count ?? 0)"
         case .rule: return "hr"
+        case .spacer(let n): return "sp:\(n)"
         }
     }
 }
@@ -34,37 +40,42 @@ enum TrixBlock: Identifiable {
 enum TrixParser {
 
     static func parse(_ html: String) -> [TrixBlock] {
+        // Legacy plain-text body (some imported comments): no tags, so its newlines
+        // ARE the line breaks — render as-is instead of collapsing them like HTML.
+        if html.range(of: "<[A-Za-z/!]", options: .regularExpression) == nil {
+            let a = Inline.parse(html.trimmingCharacters(in: .whitespacesAndNewlines), collapseWhitespace: false)
+            return a.characters.isEmpty ? [] : [.paragraph(a)]
+        }
+        return parseBlocks(html)
+    }
+
+    /// Block-level parse of HTML (also used recursively for blockquotes / wrapper divs).
+    private static func parseBlocks(_ html: String) -> [TrixBlock] {
         var blocks: [TrixBlock] = []
         // Walk top-level block elements in document order.
         let scanner = BlockScanner(html)
         while let (tag, inner, attrs) = scanner.next() {
             switch tag {
-            case "p":
-                if let yt = offloadedYouTube(inner, attrs) { blocks.append(.youtube(id: yt.id, portrait: yt.portrait)) }
-                else if let img = firstImageURL(inner) { blocks.append(.image(img)) }
-                else if let vid = firstVideoURL(inner, attrs) { blocks.append(.video(vid)) }
-                else if let yt = youtubeInfo(from: inner, attrs: attrs) { blocks.append(.youtube(id: yt.id, portrait: yt.portrait)) }
-                else {
-                    let a = Inline.parse(inner)
-                    if !a.characters.isEmpty { blocks.append(.paragraph(a)) }
+            case "p", "div":
+                // A whole-element embed (attrs carry the video / YouTube marker) is one
+                // media block; otherwise text and media are split IN ORDER — Trix keeps a
+                // post's text and its photos in ONE <div>, which used to collapse to just
+                // the first photo with every word of text dropped.
+                if isEmbedElement(attrs), let m = mediaBlock(inner, attrs) { blocks.append(m) }
+                else if tag == "div", inner.range(of: "<(div|p|ul|ol|h[1-3]|blockquote|table)\\b", options: [.regularExpression, .caseInsensitive]) != nil {
+                    blocks.append(contentsOf: parseBlocks(inner))   // a wrapper div: its children are blocks
                 }
+                else { blocks.append(contentsOf: splitMixed(inner)) }
             case "h1", "h2", "h3":
-                blocks.append(.heading(Inline.parse(inner), level: Int(String(tag.dropFirst())) ?? 2))
+                blocks.append(.heading(blockText(inner), level: Int(String(tag.dropFirst())) ?? 2))
             case "ul", "ol":
                 let items = listItems(inner)
                 if !items.isEmpty { blocks.append(.list(items: items, ordered: tag == "ol")) }
             case "blockquote":
-                blocks.append(.quote(parse(inner)))
-            case "figure", "div":
-                if inner.range(of: "<hr", options: .caseInsensitive) != nil { blocks.append(.rule) }
-                else if let yt = offloadedYouTube(inner, attrs) { blocks.append(.youtube(id: yt.id, portrait: yt.portrait)) }
-                else if let img = firstImageURL(inner) { blocks.append(.image(img)) }
-                else if let vid = firstVideoURL(inner, attrs) { blocks.append(.video(vid)) }
-                else if let yt = youtubeInfo(from: inner, attrs: attrs) { blocks.append(.youtube(id: yt.id, portrait: yt.portrait)) }
-                else {
-                    let a = Inline.parse(inner)
-                    if !a.characters.isEmpty { blocks.append(.paragraph(a)) }
-                }
+                blocks.append(.quote(parseBlocks(inner)))
+            case "figure":
+                if let m = mediaBlock(inner, attrs) { blocks.append(m) }
+                else if let b = textBlock(inner) { blocks.append(b) }   // e.g. a PDF/file attachment's link
             case "table":
                 let rows = tableRows(inner)
                 if !rows.isEmpty { blocks.append(.table(rows: rows)) }
@@ -77,16 +88,105 @@ enum TrixParser {
             case "iframe":
                 if let yt = youtubeInfo(from: "", attrs: attrs) { blocks.append(.youtube(id: yt.id, portrait: yt.portrait)) }
             default:
-                let a = Inline.parse(inner)
-                if !a.characters.isEmpty { blocks.append(.paragraph(a)) }
+                if let b = textBlock(inner) { blocks.append(b) }
             }
         }
         // Fallback: no recognizable blocks → treat the whole thing as one paragraph.
         if blocks.isEmpty {
-            let a = Inline.parse(html)
+            let a = blockText(html)
             if !a.characters.isEmpty { blocks.append(.paragraph(a)) }
         }
         return blocks
+    }
+
+    // MARK: mixed text + media
+
+    /// A figure / image / rule / video / YouTube element inside a text block. Figures
+    /// and anchors run to their FIRST close (they don't nest in Trix/Basecamp output).
+    private static let mediaElementRe = try! NSRegularExpression(
+        pattern: "<figure\\b[^>]*>.*?</figure>"
+            + "|<a\\b[^>]*(?:dc-youtube|dc-embed|data-yt=|youtube\\.com/|youtu\\.be/)[^>]*>.*?</a>"
+            + "|<a\\b[^>]*href=\"[^\"]+\\.(?:\(videoExt))(?:\\?[^\"]*)?\"[^>]*>.*?</a>"
+            + "|<iframe\\b[^>]*>(?:.*?</iframe>)?"
+            + "|<img\\b[^>]*>|<hr\\b[^>]*>",
+        options: [.caseInsensitive, .dotMatchesLineSeparators])
+
+    /// The element's own attrs mark it as ONE embed (offloaded YouTube / Trix video).
+    private static func isEmbedElement(_ attrs: String) -> Bool {
+        ["dc-youtube", "data-yt=", "data-trix-content-type=\"video"].contains {
+            attrs.range(of: $0, options: .caseInsensitive) != nil
+        }
+    }
+
+    /// A block's inner HTML → its text and media blocks in document order. Text
+    /// between two media elements follows the same line rules as any block (a
+    /// leading `<br>` after a photo is a blank line, as in the browser).
+    private static func splitMixed(_ inner: String) -> [TrixBlock] {
+        let ns = inner as NSString
+        let matches = mediaElementRe.matches(in: inner, range: NSRange(location: 0, length: ns.length))
+        guard !matches.isEmpty else { return textBlock(inner).map { [$0] } ?? [] }
+        var out: [TrixBlock] = []
+        var last = 0
+        for m in matches {
+            if m.range.location > last, let t = textBlock(ns.substring(with: NSRange(location: last, length: m.range.location - last))) {
+                out.append(t)
+            }
+            let el = ns.substring(with: m.range)
+            if isBareYouTubeLink(el) { if let t = textBlock(el) { out.append(t) } }
+            else if let media = mediaBlock(el, "") { out.append(media) }
+            else if let t = textBlock(el) { out.append(t) }       // a file attachment: keep its link text
+            last = m.range.location + m.range.length
+        }
+        if last < ns.length, let t = textBlock(ns.substring(from: last)) { out.append(t) }
+        return out
+    }
+
+    /// The web's embed rule (dcamp.js embedYouTube): a YouTube link whose visible text
+    /// is just its URL stays a plain link; a titled or server-marked one embeds in place.
+    private static func isBareYouTubeLink(_ el: String) -> Bool {
+        guard el.range(of: "^<a\\b", options: [.regularExpression, .caseInsensitive]) != nil,
+              !["dc-youtube", "dc-embed", "data-yt="].contains(where: { el.contains($0) }) else { return false }
+        return PlainText.strip(el).range(of: "^https?://\\S+$", options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    /// The media block for one element (or a whole figure's inner HTML), if any.
+    private static func mediaBlock(_ html: String, _ attrs: String) -> TrixBlock? {
+        if html.range(of: "^\\s*<hr\\b", options: [.regularExpression, .caseInsensitive]) != nil { return .rule }
+        if let yt = offloadedYouTube(html, attrs) { return .youtube(id: yt.id, portrait: yt.portrait) }
+        if let img = firstImageURL(html) { return .image(img) }
+        if let vid = firstVideoURL(html, attrs) { return .video(vid) }
+        if let yt = youtubeInfo(from: html, attrs: attrs) { return .youtube(id: yt.id, portrait: yt.portrait) }
+        if html.range(of: "<hr", options: .caseInsensitive) != nil { return .rule }   // <figure><hr></figure>
+        return nil
+    }
+
+    // MARK: text blocks
+
+    /// A text block's inline content, with HTML's line-box rule applied: a `<br>`
+    /// that ENDS a block adds no line in a browser (`text<br>` is one line), but a
+    /// trailing "\n" makes SwiftUI's Text one line taller — so drop exactly one.
+    static func blockText(_ html: String) -> AttributedString {
+        trimmingTrailingBreak(Inline.parse(html))
+    }
+
+    private static func trimmingTrailingBreak(_ a: AttributedString) -> AttributedString {
+        var a = a
+        if a.characters.last == "\n" { a.characters.removeLast() }
+        return a
+    }
+
+    /// `<p>`/`<div>` text → a paragraph, a blank-line spacer, or nothing. A block
+    /// holding only `<br>`s / `&nbsp;` is one browser line per `<br>` (min 1); one
+    /// that is truly empty (`<p></p>`, `<p> </p>`) has no height, so it's dropped.
+    private static func textBlock(_ inner: String) -> TrixBlock? {
+        let raw = Inline.parse(inner)
+        guard !raw.characters.isEmpty else { return nil }
+        if raw.characters.allSatisfy(\.isWhitespace) {
+            let breaks = raw.characters.filter { $0 == "\n" }.count
+            let nbsp = raw.characters.contains("\u{00A0}")
+            return (breaks > 0 || nbsp) ? .spacer(lines: max(1, breaks)) : nil
+        }
+        return .paragraph(trimmingTrailingBreak(raw))
     }
 
     // MARK: list items
@@ -97,7 +197,7 @@ enum TrixParser {
         let re = try! NSRegularExpression(pattern: "<li[^>]*>(.*?)</li>", options: [.dotMatchesLineSeparators, .caseInsensitive])
         for m in re.matches(in: inner, range: NSRange(location: 0, length: ns.length)) {
             let s = ns.substring(with: m.range(at: 1))
-            let a = Inline.parse(s)
+            let a = blockText(s)
             if !a.characters.isEmpty { items.append(a) }
         }
         return items
@@ -115,7 +215,7 @@ enum TrixParser {
             let rns = rowHTML as NSString
             var cells: [AttributedString] = []
             for cm in cellRe.matches(in: rowHTML, range: NSRange(location: 0, length: rns.length)) {
-                cells.append(Inline.parse(rns.substring(with: cm.range(at: 1))))
+                cells.append(blockText(rns.substring(with: cm.range(at: 1))))
             }
             if !cells.isEmpty { rows.append(cells) }
         }
@@ -196,52 +296,68 @@ private final class BlockScanner {
     init(_ html: String) { self.s = html as NSString }
 
     func next() -> (tag: String, inner: String, attrs: String)? {
+        let looseStart = i
         while i < s.length {
-            // find next '<'
             let lt = s.range(of: "<", options: [], range: NSRange(location: i, length: s.length - i))
-            if lt.location == NSNotFound { i = s.length; return nil }
-            // any loose text before it is ignored (Trix wraps text in <p>)
+            if lt.location == NSNotFound { i = s.length; break }
             let gt = s.range(of: ">", options: [], range: NSRange(location: lt.location, length: s.length - lt.location))
-            if gt.location == NSNotFound { i = s.length; return nil }
+            if gt.location == NSNotFound { i = s.length; break }
             let tagContent = s.substring(with: NSRange(location: lt.location + 1, length: gt.location - lt.location - 1))
-            i = gt.location + 1
             let tag = tagName(tagContent)
             // A top-level YouTube embed anchor (server offload/import markup:
             // <a class="dc-youtube" data-yt=… data-portrait=…><img ytimg thumb></a>) is a
             // block of its own — otherwise it's skipped as inline and its thumbnail <img>
             // surfaces as a plain still picture.
-            if tag == "a" && (tagContent.contains("dc-youtube") || tagContent.contains("data-yt=")) {
+            let ytAnchor = tag == "a" && (tagContent.contains("dc-youtube") || tagContent.contains("data-yt="))
+            guard ytAnchor || (!tagContent.hasPrefix("/") && Self.blockTags.contains(tag)) else {
+                i = gt.location + 1; continue                    // inline tag / stray close: part of loose content
+            }
+            // Loose inline content before this block (DM/chat "text<br><br>text", or the
+            // `<br>` between `</figure>` and `<p>`) is its own pseudo-paragraph — emit it
+            // first; the block tag is re-scanned on the next call.
+            if let loose = looseContent(from: looseStart, to: lt.location) {
+                i = lt.location
+                return ("p", loose, "")
+            }
+            i = gt.location + 1
+            if ytAnchor {
                 let cr = s.range(of: "</a>", options: .caseInsensitive, range: NSRange(location: i, length: s.length - i))
                 let end = cr.location == NSNotFound ? s.length : cr.location
                 let inner = s.substring(with: NSRange(location: i, length: end - i))
                 i = cr.location == NSNotFound ? s.length : cr.location + cr.length
                 return ("a", inner, tagContent)
             }
-            guard Self.blockTags.contains(tag) else { continue }
             let attrs = tagContent
 
             // void tags: no closing
             if tag == "hr" || tag == "img" || tagContent.hasSuffix("/") {
                 return (tag, "", attrs)
             }
-            // find matching close (non-nested-aware for the common Trix subset;
-            // blockquote/list nesting handled by re-parsing inner)
+            // find matching close; nestable tags take the BALANCED close (a nested
+            // <div> used to end its parent early and orphan the rest of the text)
             let close = "</\(tag)>"
             let cr = s.range(of: close, options: .caseInsensitive, range: NSRange(location: i, length: s.length - i))
             if cr.location == NSNotFound {
                 let inner = s.substring(from: i); i = s.length
                 return (tag, inner, attrs)
             }
-            // for nestable tags, find the LAST matching close at this level
             var end = cr
-            if tag == "blockquote" || tag == "ul" || tag == "ol" || tag == "table" {
+            if ["blockquote", "ul", "ol", "table", "div"].contains(tag) {
                 end = lastBalancedClose(open: "<\(tag)", close: close, from: i) ?? cr
             }
             let inner = s.substring(with: NSRange(location: i, length: end.location - i))
             i = end.location + end.length
             return (tag, inner, attrs)
         }
-        return nil
+        return looseContent(from: looseStart, to: s.length)      // trailing loose content
+            .map { ("p", $0, "") }
+    }
+
+    /// The HTML in [from, to) if it holds anything but whitespace, else nil.
+    private func looseContent(from: Int, to: Int) -> String? {
+        guard to > from else { return nil }
+        let seg = s.substring(with: NSRange(location: from, length: to - from))
+        return seg.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : seg
     }
 
     private func lastBalancedClose(open: String, close: String, from start: Int) -> NSRange? {

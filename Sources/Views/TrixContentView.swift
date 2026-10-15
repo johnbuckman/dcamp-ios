@@ -8,14 +8,21 @@ struct TrixContentView: View {
     /// Optional override for message links (used for in-place thread navigation).
     /// Person links (`#/p/id`) always route through the shared Router.
     var onRoute: ((String) -> Void)? = nil
+    /// Gap between adjacent text blocks, mirroring the web's per-context `p` margin:
+    /// 0 for thread/comment bodies (`.content p{margin:0}`: their blank lines are
+    /// explicit `<p><br></p>` spacers), 4 chat, 6 DM bubble, 8 summaries/Derek.
+    var paragraphSpacing: CGFloat = 0
 
     @Environment(Router.self) private var router
     private var blocks: [TrixBlock] { TrixParser.parse(html) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ForEach(blocks) { block in
-                TrixBlockView(block: block)
+        let blocks = self.blocks
+        VStack(alignment: .leading, spacing: 0) {
+            // Offsets, not TrixBlock.id: spacers (and repeated paragraphs) share ids.
+            ForEach(Array(blocks.enumerated()), id: \.offset) { i, block in
+                TrixBlockView(block: block, paragraphSpacing: paragraphSpacing)
+                    .padding(.top, i == 0 ? 0 : Self.gap(blocks[i - 1], block, paragraphSpacing))
             }
         }
         .environment(\.openURL, OpenURLAction { url in
@@ -46,6 +53,25 @@ struct TrixContentView: View {
             return .systemAction   // external links → browser
         })
     }
+
+    /// Vertical gap above `next`. Text→text is the context's paragraph spacing (the
+    /// web's collapsed margins); media/tables/rules get the web's `.dc-att{margin:12px 0}`
+    /// breathing room, and headings a little extra above.
+    static func gap(_ prev: TrixBlock, _ next: TrixBlock, _ paragraphSpacing: CGFloat) -> CGFloat {
+        if prev.isMedia || next.isMedia { return max(paragraphSpacing, 10) }
+        if case .heading = next { return max(paragraphSpacing, 8) }
+        if case .heading = prev { return max(paragraphSpacing, 4) }
+        return paragraphSpacing
+    }
+}
+
+private extension TrixBlock {
+    var isMedia: Bool {
+        switch self {
+        case .image, .video, .youtube, .table, .rule: return true
+        default: return false
+        }
+    }
 }
 
 /// Renders content that may be machine-translated: shows the translation by
@@ -54,6 +80,7 @@ struct TranslatableText: View {
     let original: String
     var translated: String?
     var onRoute: ((String) -> Void)? = nil
+    var paragraphSpacing: CGFloat = 0
     @State private var showOriginal = false
 
     private var hasTranslation: Bool {
@@ -63,7 +90,8 @@ struct TranslatableText: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            TrixContentView(html: (hasTranslation && !showOriginal) ? translated! : original, onRoute: onRoute)
+            TrixContentView(html: (hasTranslation && !showOriginal) ? translated! : original, onRoute: onRoute,
+                            paragraphSpacing: paragraphSpacing)
             if hasTranslation {
                 Button(showOriginal ? T("Show translation") : T("Translated · Show original")) {
                     showOriginal.toggle()
@@ -78,22 +106,33 @@ struct TranslatableText: View {
 /// can recurse into nested blocks.
 struct TrixBlockView: View {
     let block: TrixBlock
+    var paragraphSpacing: CGFloat = 0
 
     var body: some View {
         switch block {
         case .paragraph(let a):
             Text(a).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
 
+        case .spacer(let lines):
+            // Blank lines at the current font size (Text(" ") = exactly one line).
+            Text(Array(repeating: " ", count: lines).joined(separator: "\n"))
+                .accessibilityHidden(true)
+
         case .heading(let a, let level):
             Text(a)
-                .font(level <= 1 ? .title.bold() : (level == 2 ? .title2.bold() : .title3.bold()))
+                // One step below the system title sizes so a body <h1> never outranks
+                // the thread subject (24pt heavy) — on the web they're the same 26px.
+                .font(level <= 1 ? .title2.bold() : (level == 2 ? .title3.bold() : .headline))
                 .fixedSize(horizontal: false, vertical: true)
 
         case .quote(let inner):
             HStack(spacing: 10) {
                 RoundedRectangle(cornerRadius: 2).fill(Color.secondary.opacity(0.4)).frame(width: 3)
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(inner) { TrixBlockView(block: $0) }
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(inner.enumerated()), id: \.offset) { i, b in
+                        TrixBlockView(block: b, paragraphSpacing: paragraphSpacing)
+                            .padding(.top, i == 0 ? 0 : TrixContentView.gap(inner[i - 1], b, paragraphSpacing))
+                    }
                 }
             }
             .padding(.vertical, 2)

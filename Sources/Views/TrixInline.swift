@@ -6,7 +6,11 @@ import SwiftUI
 // intercepts). Unknown tags are dropped; their text is kept.
 enum Inline {
 
-    static func parse(_ html: String) -> AttributedString {
+    /// `collapseWhitespace` applies the browser's rule to HTML: source spaces, tabs and
+    /// newlines are ONE space, dropped at a line start and before a `<br>` / the end.
+    /// (A raw "\n" before `</div>` otherwise became an extra blank line.) Pass false
+    /// for legacy plain-text bodies, whose newlines are their only line breaks.
+    static func parse(_ html: String, collapseWhitespace: Bool = true) -> AttributedString {
         var out = AttributedString()
         var bold = false, italic = false, code = false, under = false
         var hrefStack: [String] = []
@@ -15,25 +19,39 @@ enum Inline {
         let ns = html as NSString
         var i = 0
 
+        func dropTrailingSpace() {
+            if collapseWhitespace, out.characters.last == " " { out.characters.removeLast() }
+        }
+
         func appendText(_ raw: String) {
+            var raw = raw
+            if collapseWhitespace {
+                raw = raw.replacingOccurrences(of: "[ \t\r\n]+", with: " ", options: .regularExpression)
+                if raw.hasPrefix(" "), out.characters.isEmpty || out.characters.last == "\n" || out.characters.last == " " {
+                    raw.removeFirst()
+                }
+            }
             let text = decodeEntities(raw)
             guard !text.isEmpty else { return }
             var run = AttributedString(text)
-            var font: Font = code ? .system(.body, design: .monospaced) : .body
-            if bold && italic { font = font.bold().italic() }
-            else if bold { font = font.bold() }
-            else if italic { font = font.italic() }
-            run.font = font
+            // Style via presentation intents, NOT a run font: a run-level `.font`
+            // overrides the view's `.font(…)`, which pinned every heading and every
+            // screen's 15/16pt body to `.body`. Intents compose with the view's font.
+            var intent: InlinePresentationIntent = []
+            if bold { intent.insert(.stronglyEmphasized) }
+            if italic { intent.insert(.emphasized) }
+            if code { intent.insert(.code) }
             if under { run.underlineStyle = .single }
             if let bg = colorStack.last(where: { $0.bg != nil })?.bg { run.backgroundColor = bg }
             if let href = hrefStack.last {
                 let isMention = href.hasPrefix("#/p/")
                 run.foregroundColor = isMention ? .dcAccentInk : .dcLink   // green mention, blue link
-                if isMention { run.font = font.bold() } else { run.underlineStyle = .single }
+                if isMention { intent.insert(.stronglyEmphasized) } else { run.underlineStyle = .single }
                 if let url = routeURL(href) { run.link = url }
             } else if let fg = colorStack.last(where: { $0.fg != nil })?.fg {
                 run.foregroundColor = fg
             }
+            if !intent.isEmpty { run.inlinePresentationIntent = intent }
             out.append(run)
         }
 
@@ -57,7 +75,7 @@ enum Inline {
             case "em", "i": italic = !closing
             case "code": code = !closing
             case "u": under = !closing
-            case "br": out.append(AttributedString("\n"))
+            case "br": dropTrailingSpace(); out.append(AttributedString("\n"))
             case "a":
                 if closing { if !hrefStack.isEmpty { hrefStack.removeLast() } }
                 else { hrefStack.append(TrixParser.attrValue(tagContent, "href") ?? "") }
@@ -74,6 +92,7 @@ enum Inline {
             default: break
             }
         }
+        dropTrailingSpace()
         return out
     }
 

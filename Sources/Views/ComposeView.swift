@@ -302,7 +302,7 @@ struct PreAnswerSheet: View {
                         Text(T("Derek may already have an answer"))
                             .font(.system(size: 17, weight: .bold)).foregroundStyle(Color.dcInk)
                     }
-                    TrixContentView(html: html, onRoute: onRoute).font(.system(size: 15))
+                    TrixContentView(html: html, onRoute: onRoute, paragraphSpacing: 8).font(.system(size: 15))
                 }.padding(20)
             }
             .safeAreaInset(edge: .bottom) {

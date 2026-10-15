@@ -178,8 +178,12 @@ struct NotifRow: View {
 enum PlainText {
     static func strip(_ html: String) -> String {
         var s = html.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
-        s = Inline.decodeEntities(s)
-        return s.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        return collapse(Inline.decodeEntities(s))
+    }
+
+    /// Runs of whitespace → one space, trimmed (what a browser shows for a title).
+    static func collapse(_ s: String) -> String {
+        s.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

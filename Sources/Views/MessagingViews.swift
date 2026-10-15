@@ -53,7 +53,7 @@ struct LineRow: View {
             Avatar(person: author, size: 36, tappable: true)   // web shows a per-line avatar; native was missing it
             VStack(alignment: .leading, spacing: 5) {
                 AuthorLine(person: author, date: createdAt)
-                TranslatableText(original: html, translated: translated).font(.system(size: 15))
+                TranslatableText(original: html, translated: translated, paragraphSpacing: 4).font(.system(size: 15))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -499,7 +499,7 @@ struct DMBubble: View {
             if showSender, !message.isMine, let name = message.sender?.name, !name.isEmpty {
                 Text(name).font(.system(size: 11, weight: .bold)).foregroundStyle(senderTint)
             }
-            TranslatableText(original: message.html, translated: message.bodyTr)
+            TranslatableText(original: message.html, translated: message.bodyTr, paragraphSpacing: 6)
                 .font(.system(size: 15))
                 .foregroundStyle(message.isMine ? Color.white : Color.dcInk)
             Text(RelativeTime.string(message.createdAt))
