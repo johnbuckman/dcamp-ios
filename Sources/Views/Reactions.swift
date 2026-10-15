@@ -13,11 +13,18 @@ struct BoostBar: View {
     private let api = DcampAPI.shared
 
     var body: some View {
-        HStack(spacing: 6) {
+        // Wraps like the web's `.boosts{flex-wrap:wrap}`. A plain HStack squeezed every
+        // pill into one line, so text notes wrapped a character per line and emoji clipped.
+        FlowLayout(hSpacing: 6, vSpacing: 6) {
             ForEach(boosts.list) { b in
                 Button { toggle(b.content) } label: {
                     HStack(spacing: 3) {
-                        Text(b.display).font(.system(size: 14))
+                        // Text notes (server caps them at 40 chars) are 12pt bold like the
+                        // web's `.boost.text`; one line, tail-truncated if wider than the cap.
+                        Text(b.display)
+                            .font(b.isText ? .system(size: 12, weight: .bold) : .system(size: 14))
+                            .lineLimit(1).truncationMode(.tail)
+                            .frame(maxWidth: 220)
                         // Web always renders the count (<span class="n">) — show it even at 1.
                         Text("\(b.count)").font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.dcInkSoft)
                     }
@@ -35,19 +42,41 @@ struct BoostBar: View {
                     .overlay(Circle().stroke(Color.dcLineStrong, lineWidth: 1))
             }
             .buttonStyle(.plain)
+            .modifier(PickerPopover(isPresented: $picking) { emoji in picking = false; toggle(emoji) })
         }
-        // Anchored popover (like the web's pickEmoji), NOT a sheet — on Mac Catalyst
-        // the sheet's Cancel didn't respond until the mouse moved. A popover dismisses
-        // on outside tap, so there's no Cancel button to get stuck.
-        .popover(isPresented: $picking, arrowEdge: .bottom) {
-            EmojiPicker { emoji in picking = false; toggle(emoji) }
-                .presentationCompactAdaptation(.popover)
+    }
+
+    /// Anchored popover (like the web's pickEmoji), NOT a sheet — on Mac Catalyst the
+    /// sheet's Cancel didn't respond until the mouse moved. A popover dismisses on outside
+    /// tap, so there's no Cancel button to get stuck. Anchored on the add button so the
+    /// arrow still points at it when the bar wraps. The system picks above/below: a fixed
+    /// `arrowEdge: .bottom` (honoured since iOS 18) forced it above and clipped its top
+    /// when the button sat high on screen. iOS 17 ignores arrowEdge on iOS anyway.
+    private struct PickerPopover: ViewModifier {
+        @Binding var isPresented: Bool
+        var onPick: (String) -> Void
+
+        func body(content: Content) -> some View {
+            if #available(iOS 18.0, macCatalyst 18.0, *) {
+                content.popover(isPresented: $isPresented, arrowEdge: nil) { picker }
+            } else {
+                content.popover(isPresented: $isPresented) { picker }
+            }
+        }
+
+        private var picker: some View {
+            EmojiPicker(onPick: onPick).presentationCompactAdaptation(.popover)
         }
     }
 
     private func toggle(_ content: String) {
         Task { await api.boostToggle(type: type, id: id, content: content); await onChange() }
     }
+}
+
+private extension Boost {
+    /// A short text note rather than an emoji — same test as the web's `isTextBoost`.
+    var isText: Bool { !content.hasPrefix("fa:") && content.contains(where: { $0.isASCII && ($0.isLetter || $0.isNumber) }) }
 }
 
 /// Emoji reaction picker — mirrors the web's designed picker (`pickEmoji`): a search
