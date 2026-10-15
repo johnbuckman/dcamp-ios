@@ -213,6 +213,7 @@ enum UIStringCatalog {
         "Send me a summary",
         "Server",
         "Set your name, about, picture, and location (and whether it shows on your card).",
+        "Share",
         "Show",
         "Show in sidebar",
         "Show my city & country on my profile",

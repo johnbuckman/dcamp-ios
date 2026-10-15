@@ -202,7 +202,10 @@ struct ThreadDetailView: View {
 
     private func messageMenu(_ m: MessageDetail) -> some View {
         Menu {
-            Button { copyLink(messageID: m.id) } label: { Label(T("Copy link"), systemImage: "link") }
+            Button { copyLink() } label: { Label(T("Copy link"), systemImage: "link") }
+            ShareLink(item: permalink(), preview: SharePreview(m.displaySubject, image: Image("DcampMark"))) {
+                Label(T("Share"), systemImage: "square.and.arrow.up")
+            }
             if session.canPost {
                 Button { quote(m.html, aid: m.author?.id, aname: m.author?.name, src: "#/message/\(currentID)") } label: { Label(T("Quote & reply"), systemImage: "quote.opening") }
             }
@@ -248,7 +251,10 @@ struct ThreadDetailView: View {
 
     private func commentMenu(_ c: Comment) -> some View {
         Menu {
-            Button { copyLink(messageID: currentID, commentID: c.id) } label: { Label(T("Copy link"), systemImage: "link") }
+            Button { copyLink(commentID: c.id) } label: { Label(T("Copy link"), systemImage: "link") }
+            ShareLink(item: permalink(commentID: c.id), preview: SharePreview(commentShareTitle(c), image: Image("DcampMark"))) {
+                Label(T("Share"), systemImage: "square.and.arrow.up")
+            }
             if session.canPost {
                 Button { quote(c.html, aid: c.author?.id, aname: c.author?.name, src: "#/message/\(currentID)?c=\(c.id)") } label: { Label(T("Quote & reply"), systemImage: "quote.opening") }
             }
@@ -308,10 +314,28 @@ struct ThreadDetailView: View {
         return session.boards.first(where: { $0.id == pid })?.name == "Problems"
     }
 
-    private func copyLink(messageID: Int, commentID: Int? = nil) {
-        var s = "https://decentespresso.com/support/dcamp/#/message/\(messageID)"
-        if let commentID { s += "?c=\(commentID)" }
-        UIPasteboard.general.string = s
+    /// Public web permalink to this thread (or one comment in it) — shared by Copy link and Share.
+    /// Same clean path the web builds (dcamp.js tokenToPath): /dcamp/<board-slug>/<thread-slug>[/<cid>];
+    /// board slug falls back to "f<pid>" like the web. Without a thread slug, use the legacy hash link.
+    private func permalink(commentID: Int? = nil) -> URL {
+        var s: String
+        if let m = message, let slug = m.slug, !slug.isEmpty, let pid = m.projectId {
+            let board = session.boards.first(where: { $0.id == pid })?.slug ?? ""
+            s = "https://decentespresso.com/dcamp/\(board.isEmpty ? "f\(pid)" : board)/\(slug)"
+            if let commentID { s += "/\(commentID)" }
+        } else {
+            s = "https://decentespresso.com/support/dcamp/#/message/\(currentID)"
+            if let commentID { s += "?c=\(commentID)" }
+        }
+        return URL(string: s) ?? URL(string: "https://decentespresso.com/dcamp/")!
+    }
+    private func copyLink(commentID: Int? = nil) {
+        UIPasteboard.general.string = permalink(commentID: commentID).absoluteString
+    }
+    /// Share-sheet preview title for a comment: "Comment — Author" (falls back to the thread subject).
+    private func commentShareTitle(_ c: Comment) -> String {
+        if let name = c.author?.name, !name.isEmpty { return "\(T("Comment")) — \(name)" }
+        return message?.displaySubject ?? T("Comment")
     }
     /// Insert a web-parity quote into the reply composer + scroll to it: an "@Author wrote:"
     /// attribution line (author mention + source link) then a blockquote of the plain-text
