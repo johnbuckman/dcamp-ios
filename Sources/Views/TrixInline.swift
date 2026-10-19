@@ -105,7 +105,7 @@ enum Inline {
             let enc = token.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
             return URL(string: "dcamp://route?t=\(enc)")
         }
-        return URL(string: href)
+        return AppConfig.absoluteLink(href)
     }
 
     /// Extract `color` and `background-color` from an inline CSS `style` string.

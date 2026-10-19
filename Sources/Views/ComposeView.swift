@@ -194,7 +194,7 @@ struct ComposeView: View {
         guard isNewThread, !precheckPassed else { doPost(); return }
         posting = true
         Task {
-            let html = await model.currentHTML().replacingOccurrences(of: AppConfig.assetBase, with: "")
+            let html = AppConfig.relativizeOwnAssets(await model.currentHTML())
             let subj = subject.trimmingCharacters(in: .whitespaces)
             if PlainText.strip(html).isEmpty { posting = false; error = T("Write something before posting."); return }
             let sc = await api.subjectCheck(subject: subj, body: html)
@@ -221,7 +221,7 @@ struct ComposeView: View {
             defer { posting = false }
             // Read the editor's content on demand and normalize image URLs back to
             // host-relative (as the SPA stores them).
-            let html = await model.currentHTML().replacingOccurrences(of: AppConfig.assetBase, with: "")
+            let html = AppConfig.relativizeOwnAssets(await model.currentHTML())
             if PlainText.strip(html).isEmpty {
                 error = T("Write something before posting.")
                 return

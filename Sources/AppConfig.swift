@@ -56,6 +56,23 @@ enum AppConfig {
         return URL(string: "\(assetBase)/support/dcamp/img?src=\(enc)&w=\(width)") ?? url
     }
 
+    /// Turn our own uploaded-asset URLs back into host-relative paths (as the SPA
+    /// stores them) before posting. Only `/support/dcamp/…` URLs inside attribute
+    /// values (`src="…"`, `href="…"`, and the Trix attachment JSON's `&quot;url&quot;`)
+    /// are touched: a blanket strip of the host also rewrote pasted links like
+    /// `https://decentespresso.com/downloads` into a dead `<a href="/downloads">/downloads</a>`.
+    static func relativizeOwnAssets(_ html: String) -> String {
+        let pattern = "(=\"|&quot;)" + NSRegularExpression.escapedPattern(for: assetBase) + "(?=/support/dcamp/)"
+        return html.replacingOccurrences(of: pattern, with: "$1", options: .regularExpression)
+    }
+
+    /// Resolve a root-relative href (`/downloads`) against the server so it can be
+    /// opened; absolute URLs are returned unchanged.
+    static func absoluteLink(_ href: String) -> URL? {
+        if href.hasPrefix("/"), !href.hasPrefix("//") { return URL(string: assetBase + href) }
+        return URL(string: href)
+    }
+
     // MARK: - OAuth2 browser login (/support/oauth2 provider)
     /// The app never handles the password: it opens the /support/oauth2 authorize
     /// page in a system browser (ASWebAuthenticationSession), the user logs in there
