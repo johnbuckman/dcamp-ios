@@ -53,7 +53,7 @@ struct LineRow: View {
             Avatar(person: author, size: 36, tappable: true)   // web shows a per-line avatar; native was missing it
             VStack(alignment: .leading, spacing: 5) {
                 AuthorLine(person: author, date: createdAt)
-                TranslatableText(original: html, translated: translated).font(.system(size: 15))
+                TranslatableText(original: html, translated: translated, paragraphSpacing: 4).font(.system(size: 15))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -160,7 +160,7 @@ struct ChatView: View {
                 }
             }
             if session.canPost {
-                InlineComposer(placeholder: "Message the room… (rich text, @mention)", model: composerModel, draftKey: "chat:main") { html in
+                InlineComposer(placeholder: T("Message the room… (rich text, @mention)"), model: composerModel, draftKey: "chat:main") { html in
                     await store.send(html: html)
                 }
             } else {
@@ -432,7 +432,7 @@ struct DMThreadView: View {
                     }
                 }
             }
-            InlineComposer(placeholder: "Write a direct message… (rich text, @mention)", model: composerModel, draftKey: "dm:\(convoID)") { html in
+            InlineComposer(placeholder: T("Write a direct message… (rich text, @mention)"), model: composerModel, draftKey: "dm:\(convoID)") { html in
                 await store.send(html: html)
             }
         }
@@ -457,7 +457,7 @@ struct DMThreadView: View {
             }
         }
         .sheet(isPresented: $showInvite) {
-            PeopleSearchSheet(title: "Invite") { r in
+            PeopleSearchSheet(title: T("Invite")) { r in
                 await api.dmInvite(convoID: convoID, participantIDs: [r.id], days: 30)
                 await store.reload()
                 return nil
@@ -499,7 +499,7 @@ struct DMBubble: View {
             if showSender, !message.isMine, let name = message.sender?.name, !name.isEmpty {
                 Text(name).font(.system(size: 11, weight: .bold)).foregroundStyle(senderTint)
             }
-            TranslatableText(original: message.html, translated: message.bodyTr, linkColor: message.isMine ? .white : .dcLink)
+            TranslatableText(original: message.html, translated: message.bodyTr, linkColor: message.isMine ? .white : .dcLink, paragraphSpacing: 6)
                 .font(.system(size: 15))
                 .foregroundStyle(message.isMine ? Color.white : Color.dcInk)
             Text(RelativeTime.string(message.createdAt))

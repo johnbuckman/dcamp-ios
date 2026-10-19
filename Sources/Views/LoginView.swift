@@ -37,7 +37,7 @@ struct LoginView: View {
                         HStack(spacing: 8) {
                             if session.loggingIn { ProgressView().tint(.white) }
                             else { Image(systemName: "safari") }
-                            Text(session.loggingIn ? "Signing in…" : "Sign in with Decent")
+                            Text(session.loggingIn ? T("Signing in…") : T("Sign in with Decent"))
                         }
                         .frame(maxWidth: .infinity)
                     }

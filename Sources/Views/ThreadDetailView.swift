@@ -10,11 +10,17 @@ struct ThreadDetailView: View {
 
     @Environment(SessionStore.self) private var session
     @Environment(Router.self) private var router
+    @Environment(ForumFilterStore.self) private var forumFilter
     @Environment(\.dismiss) private var dismiss
+    @State private var showFilter = false
     @State private var currentID: Int
     @State private var message: MessageDetail?
     @State private var comments: [Comment] = []
     @State private var lastVisit: Int?
+    @State private var showAll = false          // "Load all messages" pressed for this thread
+    @State private var collapsedTotal: Int?     // real comment count while the server sent a collapsed window
+    @State private var collapsedHead = 10       // how many of `comments` are the head (the rest is the tail)
+    @State private var loadingAll = false
     @State private var loading = false
     @State private var editingMessage: MessageDetail?
     @State private var editingComment: Comment?
@@ -39,12 +45,42 @@ struct ThreadDetailView: View {
     private var siblingIndex: Int? { router.threadSiblings.firstIndex(of: currentID) }
     private var prevSibling: Int? { guard let i = siblingIndex, i > 0 else { return nil }; return router.threadSiblings[i - 1] }
     private var nextSibling: Int? { guard let i = siblingIndex, i < router.threadSiblings.count - 1 else { return nil }; return router.threadSiblings[i + 1] }
-    private func goto(_ id: Int) { message = nil; comments = []; currentID = id }
+    private func goto(_ id: Int) { message = nil; comments = []; resetCollapse(); currentID = id }
+    private func resetCollapse() { showAll = false; collapsedTotal = nil; collapsedHead = 10 }
+    /// Comments the server left out of a collapsed thread (0 when uncollapsed).
+    private var hiddenMiddle: Int { max(0, (collapsedTotal ?? 0) - comments.count) }
+
+    /// Comments after the forum Country filter: when the filter is on with a
+    /// country selection, hide comments whose author isn't in the chosen countries
+    /// (blank/unknown country counts as non-matching), mirroring the web thread.
+    private var visibleComments: [Comment] {
+        guard forumFilter.active, !forumFilter.countries.isEmpty else { return comments }
+        let set = Set(forumFilter.countries.map { $0.uppercased() })
+        return comments.filter { set.contains(($0.authorCountry ?? "").uppercased()) }
+    }
+    private var hiddenCount: Int { comments.count - visibleComments.count }
 
     /// The first comment posted after the viewer's previous visit (for the marker).
     private var firstUnreadCommentID: Int? {
         guard let lv = lastVisit, lv > 0 else { return nil }
-        return comments.first(where: { ($0.createdAt ?? 0) > lv })?.id
+        return visibleComments.first(where: { ($0.createdAt ?? 0) > lv })?.id
+    }
+
+    /// Thread-view filter chip: shows the remembered filter as an on/off toggle and,
+    /// while on, notes how many comments it hid. Tap the label to edit the filter.
+    @ViewBuilder private var threadFilterChip: some View {
+        if forumFilter.selected {
+            HStack(spacing: 8) {
+                let note = (forumFilter.on && !forumFilter.countries.isEmpty && hiddenCount > 0) ? " · \(hiddenCount) hidden" : ""
+                DCFilterPill(icon: "line.3.horizontal.decrease", title: forumFilter.label + note, active: forumFilter.on) {
+                    showFilter = true
+                }
+                DCFilterPill(icon: forumFilter.on ? "checkmark.circle" : "circle",
+                             title: forumFilter.on ? T("Filter on") : T("Filter off"), active: forumFilter.on) {
+                    forumFilter.toggleOn()
+                }
+            }
+        }
     }
 
     var body: some View {
@@ -52,16 +88,19 @@ struct ThreadDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 SummarizeBar(kind: .thread(currentID))
+                threadFilterChip
                 if let m = message {
                     messageCard(m)
-                    if !comments.isEmpty {
-                        Text("^[\(comments.count) comment](inflect: true)")
+                    if !visibleComments.isEmpty {
+                        let shownCount = hiddenMiddle > 0 ? visibleComments.count + hiddenMiddle : visibleComments.count
+                        Text((shownCount == 1 ? T("{n} comment") : T("{n} comments")).replacingOccurrences(of: "{n}", with: "\(shownCount)"))
                             .font(.system(size: 16, weight: .bold)).foregroundStyle(Color.dcInk).padding(.top, 4)
                         VStack(spacing: 0) {
-                            ForEach(comments) { c in
+                            ForEach(visibleComments) { c in
                                 if c.id == firstUnreadCommentID { SinceLastVisitDivider() }
                                 commentRow(c).id("c-\(c.id)")
                                 Divider().background(Color.dcLine)
+                                if hiddenMiddle > 0, c.id == headBoundaryID { loadAllRow }
                             }
                         }
                         .dcCard(padding: 4)
@@ -91,6 +130,9 @@ struct ThreadDetailView: View {
                     }.disabled(nextSibling == nil)
                 }
             }
+        }
+        .sheet(isPresented: $showFilter) {
+            FilterSheet(onApply: {}).environment(session).environment(forumFilter)
         }
         .sheet(item: $editingMessage) { m in
             ComposeView(mode: .editThread(message: m)) { _ in Task { await load() } }
@@ -160,9 +202,12 @@ struct ThreadDetailView: View {
 
     private func messageMenu(_ m: MessageDetail) -> some View {
         Menu {
-            Button { copyLink(messageID: m.id) } label: { Label(T("Copy link"), systemImage: "link") }
+            Button { copyLink() } label: { Label(T("Copy link"), systemImage: "link") }
+            ShareLink(item: permalink(), preview: SharePreview(m.displaySubject, image: Image("DcampMark"))) {
+                Label(T("Share"), systemImage: "square.and.arrow.up")
+            }
             if session.canPost {
-                Button { quote(m.html) } label: { Label(T("Quote & reply"), systemImage: "quote.opening") }
+                Button { quote(m.html, aid: m.author?.id, aname: m.author?.name, src: "#/message/\(currentID)") } label: { Label(T("Quote & reply"), systemImage: "quote.opening") }
             }
             if canModify(m.author?.id) {
                 Button { editingMessage = m } label: { Label(T("Edit"), systemImage: "pencil") }
@@ -197,7 +242,7 @@ struct ThreadDetailView: View {
                     Spacer(minLength: 0)
                     commentMenu(c)
                 }
-                TranslatableText(original: c.html, translated: c.bodyTr, onRoute: route)
+                TranslatableText(original: c.html, translated: c.bodyTr, onRoute: route).font(.system(size: 16))
                 BoostBar(type: "comment", id: c.id, boosts: c.boosts ?? Boosts()) { await load() }
             }
         }
@@ -206,9 +251,12 @@ struct ThreadDetailView: View {
 
     private func commentMenu(_ c: Comment) -> some View {
         Menu {
-            Button { copyLink(messageID: currentID, commentID: c.id) } label: { Label(T("Copy link"), systemImage: "link") }
+            Button { copyLink(commentID: c.id) } label: { Label(T("Copy link"), systemImage: "link") }
+            ShareLink(item: permalink(commentID: c.id), preview: SharePreview(commentShareTitle(c), image: Image("DcampMark"))) {
+                Label(T("Share"), systemImage: "square.and.arrow.up")
+            }
             if session.canPost {
-                Button { quote(c.html) } label: { Label(T("Quote & reply"), systemImage: "quote.opening") }
+                Button { quote(c.html, aid: c.author?.id, aname: c.author?.name, src: "#/message/\(currentID)?c=\(c.id)") } label: { Label(T("Quote & reply"), systemImage: "quote.opening") }
             }
             if canModify(c.author?.id) {
                 Button { editingComment = c } label: { Label(T("Edit"), systemImage: "pencil") }
@@ -225,7 +273,7 @@ struct ThreadDetailView: View {
         if session.canPost {
             VStack(alignment: .leading, spacing: 8) {
                 Text(T("Add a comment")).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.dcInk)
-                InlineComposer(placeholder: "Write a comment… (rich text, @mention)", model: composerModel, draftKey: "thread:\(currentID)") { html in
+                InlineComposer(placeholder: T("Write a comment… (rich text, @mention)"), model: composerModel, draftKey: "thread:\(currentID)") { html in
                     do {
                         let r = try await api.createComment(messageID: currentID, bodyHTML: html)
                         await load()
@@ -266,18 +314,48 @@ struct ThreadDetailView: View {
         return session.boards.first(where: { $0.id == pid })?.name == "Problems"
     }
 
-    private func copyLink(messageID: Int, commentID: Int? = nil) {
-        var s = "https://decentespresso.com/support/dcamp/#/message/\(messageID)"
-        if let commentID { s += "?c=\(commentID)" }
-        UIPasteboard.general.string = s
+    /// Public web permalink to this thread (or one comment in it) — shared by Copy link and Share.
+    /// Same clean path the web builds (dcamp.js tokenToPath): /dcamp/<board-slug>/<thread-slug>[/<cid>];
+    /// board slug falls back to "f<pid>" like the web. Without a thread slug, use the legacy hash link.
+    private func permalink(commentID: Int? = nil) -> URL {
+        var s: String
+        if let m = message, let slug = m.slug, !slug.isEmpty, let pid = m.projectId {
+            let board = session.boards.first(where: { $0.id == pid })?.slug ?? ""
+            s = "https://decentespresso.com/dcamp/\(board.isEmpty ? "f\(pid)" : board)/\(slug)"
+            if let commentID { s += "/\(commentID)" }
+        } else {
+            s = "https://decentespresso.com/support/dcamp/#/message/\(currentID)"
+            if let commentID { s += "?c=\(commentID)" }
+        }
+        return URL(string: s) ?? URL(string: "https://decentespresso.com/dcamp/")!
     }
-    /// Insert a blockquote of the given content into the reply composer + scroll to it.
-    private func quote(_ html: String) {
-        let text = PlainText.strip(html)
-            .replacingOccurrences(of: "&", with: "&amp;")
-            .replacingOccurrences(of: "<", with: "&lt;")
-            .replacingOccurrences(of: ">", with: "&gt;")
-        composerModel.insertQuote("<p>\(text)</p>")
+    private func copyLink(commentID: Int? = nil) {
+        UIPasteboard.general.string = permalink(commentID: commentID).absoluteString
+    }
+    /// Share-sheet preview title for a comment: "Comment — Author" (falls back to the thread subject).
+    private func commentShareTitle(_ c: Comment) -> String {
+        if let name = c.author?.name, !name.isEmpty { return "\(T("Comment")) — \(name)" }
+        return message?.displaySubject ?? T("Comment")
+    }
+    /// Insert a web-parity quote into the reply composer + scroll to it: an "@Author wrote:"
+    /// attribution line (author mention + source link) then a blockquote of the plain-text
+    /// selection — mirroring dcamp.js insertQuote.
+    private func quote(_ html: String, aid: Int?, aname: String?, src: String?) {
+        func esc(_ s: String) -> String {
+            s.replacingOccurrences(of: "&", with: "&amp;")
+                .replacingOccurrences(of: "<", with: "&lt;")
+                .replacingOccurrences(of: ">", with: "&gt;")
+                .replacingOccurrences(of: "\"", with: "&quot;")
+                .replacingOccurrences(of: "'", with: "&#39;")
+        }
+        let body = "<blockquote>" + esc(PlainText.strip(html))
+            .replacingOccurrences(of: "\n+", with: "<br>", options: .regularExpression) + "</blockquote>"
+        var out = body
+        if let aid, let aname, !aname.isEmpty {
+            let wrote = (src?.isEmpty == false) ? "<a href=\"\(esc(src!))\">\(esc(T("wrote"))):</a>" : "\(esc(T("wrote"))):"
+            out = "<a href=\"#/p/\(aid)\">@\(esc(aname))</a> \(wrote)<br>" + body
+        }
+        composerModel.insertQuote(out)
         scrollTick += 1
     }
     private func setStatus(_ status: String, for id: Int) { Task { await api.messageSetStatus(id: id, status: status); await load() } }
@@ -291,7 +369,7 @@ struct ThreadDetailView: View {
     private func moveOfftopic(_ cid: Int) {
         Task {
             let r = await api.offtopicMove(commentID: cid)
-            if let newID = r.id { message = nil; currentID = newID }   // navigate to the new thread in place
+            if let newID = r.id { message = nil; resetCollapse(); currentID = newID }   // navigate to the new thread in place
             else { await load() }
         }
     }
@@ -302,27 +380,86 @@ struct ThreadDetailView: View {
         let path = token.hasPrefix("/") ? String(token.dropFirst()) : token
         let parts = path.split(separator: "/")
         if parts.count >= 2, parts[0] == "message", let id = Int(parts[1].prefix(while: { $0.isNumber })) {
-            message = nil; currentID = id
+            message = nil; resetCollapse(); currentID = id
         }
+    }
+
+    /// `message` params: all=1 once "Load all messages" was pressed; c=<cid> for a deep
+    /// link into the opening thread, so the server never collapses away the anchor.
+    private var messageParams: [String: String] {
+        var p = ["id": String(currentID)]
+        if showAll { p["all"] = "1" }
+        if let a = commentAnchor, currentID == messageID { p["c"] = String(a) }
+        return p
     }
 
     private func load() async {
         loading = true; defer { loading = false }
-        if let resp: MessageResponse = try? await api.call("message", ["id": String(currentID)]) {
+        if let resp: MessageResponse = try? await api.call("message", messageParams) {
             message = resp.message
             comments = resp.comments ?? []
             lastVisit = resp.lastVisit
+            applyCollapse(resp)
         }
+    }
+    private func applyCollapse(_ resp: MessageResponse) {
+        if resp.isCollapsed {
+            collapsedTotal = resp.total
+            collapsedHead = resp.head ?? 10
+        } else {
+            collapsedTotal = nil
+        }
+    }
+    private func loadAll() {
+        loadingAll = true
+        showAll = true
+        Task { await load(); loadingAll = false }
+    }
+
+    /// Last comment of the collapsed head window — the "Load all" row goes after it.
+    private var headBoundaryID: Int? {
+        guard hiddenMiddle > 0, collapsedHead > 0, comments.count >= collapsedHead else { return nil }
+        return comments[collapsedHead - 1].id
+    }
+    private var loadAllRow: some View {
+        Button { loadAll() } label: {
+            HStack(spacing: 8) {
+                if loadingAll { ProgressView().controlSize(.small) } else { Image(systemName: "ellipsis") }
+                Text(T("Load all messages") + " (\(hiddenMiddle))").font(.system(size: 14, weight: .semibold))
+            }
+            .frame(maxWidth: .infinity).padding(.vertical, 12)
+            .foregroundStyle(Color.dcAccentInk)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(loadingAll)
+        .overlay(alignment: .bottom) { Divider().background(Color.dcLine) }
     }
 
     /// Poll for new/streaming comments without flashing the whole view. Only
     /// reassigns when something actually changed (count or a streaming body).
+    /// A COLLAPSED thread polls append-only (merge by id): the fresh response is again
+    /// head+tail, so a plain replace would shuffle the window and never removes the
+    /// unshown middle — new comments are appended, changed bodies updated in place.
     private func pollUpdate() async {
-        guard let resp: MessageResponse = try? await api.call("message", ["id": String(currentID)]) else { return }
+        guard let resp: MessageResponse = try? await api.call("message", messageParams) else { return }
         let fresh = resp.comments ?? []
-        let changed = fresh.count != comments.count ||
-            zip(fresh, comments).contains { $0.body != $1.body || $0.streaming != $1.streaming }
-        if changed { comments = fresh }
+        if resp.isCollapsed || collapsedTotal != nil {
+            var merged = comments
+            var changed = false
+            let index = Dictionary(uniqueKeysWithValues: merged.enumerated().map { ($1.id, $0) })
+            for c in fresh {
+                if let i = index[c.id] {
+                    if merged[i].body != c.body || merged[i].streaming != c.streaming { merged[i] = c; changed = true }
+                } else { merged.append(c); changed = true }
+            }
+            if changed { comments = merged }
+            if resp.isCollapsed { collapsedTotal = max(resp.total ?? 0, comments.count) } else { collapsedTotal = nil; comments = fresh }
+        } else {
+            let changed = fresh.count != comments.count ||
+                zip(fresh, comments).contains { $0.body != $1.body || $0.streaming != $1.streaming }
+            if changed { comments = fresh }
+        }
         if resp.message.boosts?.list.count != message?.boosts?.list.count { message = resp.message }
     }
 }

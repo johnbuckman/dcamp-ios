@@ -1,4 +1,5 @@
 import SwiftUI
+import AVKit
 
 /// Renders parsed Trix HTML as native SwiftUI. Internal `dcamp://route` links are
 /// handed to `onRoute`; external links open in the browser.
@@ -10,14 +11,21 @@ struct TrixContentView: View {
     /// Link colour override — used by blue DM bubbles so links stay visible on
     /// the bubble (white links on the blue bubble, like iMessage).
     var linkColor: Color = .dcLink
+    /// Gap between adjacent text blocks, mirroring the web's per-context `p` margin:
+    /// 0 for thread/comment bodies (`.content p{margin:0}`: their blank lines are
+    /// explicit `<p><br></p>` spacers), 4 chat, 6 DM bubble, 8 summaries/Derek.
+    var paragraphSpacing: CGFloat = 0
 
     @Environment(Router.self) private var router
     private var blocks: [TrixBlock] { TrixParser.parse(html, linkColor: linkColor) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ForEach(blocks) { block in
-                TrixBlockView(block: block)
+        let blocks = self.blocks
+        VStack(alignment: .leading, spacing: 0) {
+            // Offsets, not TrixBlock.id: spacers (and repeated paragraphs) share ids.
+            ForEach(Array(blocks.enumerated()), id: \.offset) { i, block in
+                TrixBlockView(block: block, paragraphSpacing: paragraphSpacing)
+                    .padding(.top, i == 0 ? 0 : Self.gap(blocks[i - 1], block, paragraphSpacing))
             }
         }
         .environment(\.openURL, OpenURLAction { url in
@@ -48,6 +56,25 @@ struct TrixContentView: View {
             return .systemAction   // external links → browser
         })
     }
+
+    /// Vertical gap above `next`. Text→text is the context's paragraph spacing (the
+    /// web's collapsed margins); media/tables/rules get the web's `.dc-att{margin:12px 0}`
+    /// breathing room, and headings a little extra above.
+    static func gap(_ prev: TrixBlock, _ next: TrixBlock, _ paragraphSpacing: CGFloat) -> CGFloat {
+        if prev.isMedia || next.isMedia { return max(paragraphSpacing, 10) }
+        if case .heading = next { return max(paragraphSpacing, 8) }
+        if case .heading = prev { return max(paragraphSpacing, 4) }
+        return paragraphSpacing
+    }
+}
+
+private extension TrixBlock {
+    var isMedia: Bool {
+        switch self {
+        case .image, .video, .youtube, .table, .rule: return true
+        default: return false
+        }
+    }
 }
 
 /// Renders content that may be machine-translated: shows the translation by
@@ -57,6 +84,7 @@ struct TranslatableText: View {
     var translated: String?
     var onRoute: ((String) -> Void)? = nil
     var linkColor: Color = .dcLink
+    var paragraphSpacing: CGFloat = 0
     @State private var showOriginal = false
 
     private var hasTranslation: Bool {
@@ -66,9 +94,10 @@ struct TranslatableText: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            TrixContentView(html: (hasTranslation && !showOriginal) ? translated! : original, onRoute: onRoute, linkColor: linkColor)
+            TrixContentView(html: (hasTranslation && !showOriginal) ? translated! : original, onRoute: onRoute,
+                            linkColor: linkColor, paragraphSpacing: paragraphSpacing)
             if hasTranslation {
-                Button(showOriginal ? "Show translation" : "Translated · Show original") {
+                Button(showOriginal ? T("Show translation") : T("Translated · Show original")) {
                     showOriginal.toggle()
                 }
                 .font(.caption).foregroundStyle(linkColor)
@@ -81,22 +110,33 @@ struct TranslatableText: View {
 /// can recurse into nested blocks.
 struct TrixBlockView: View {
     let block: TrixBlock
+    var paragraphSpacing: CGFloat = 0
 
     var body: some View {
         switch block {
         case .paragraph(let a):
             Text(a).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
 
+        case .spacer(let lines):
+            // Blank lines at the current font size (Text(" ") = exactly one line).
+            Text(Array(repeating: " ", count: lines).joined(separator: "\n"))
+                .accessibilityHidden(true)
+
         case .heading(let a, let level):
             Text(a)
-                .font(level <= 1 ? .title.bold() : (level == 2 ? .title2.bold() : .title3.bold()))
+                // One step below the system title sizes so a body <h1> never outranks
+                // the thread subject (24pt heavy) — on the web they're the same 26px.
+                .font(level <= 1 ? .title2.bold() : (level == 2 ? .title3.bold() : .headline))
                 .fixedSize(horizontal: false, vertical: true)
 
         case .quote(let inner):
             HStack(spacing: 10) {
                 RoundedRectangle(cornerRadius: 2).fill(Color.secondary.opacity(0.4)).frame(width: 3)
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(inner) { TrixBlockView(block: $0) }
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(inner.enumerated()), id: \.offset) { i, b in
+                        TrixBlockView(block: b, paragraphSpacing: paragraphSpacing)
+                            .padding(.top, i == 0 ? 0 : TrixContentView.gap(inner[i - 1], b, paragraphSpacing))
+                    }
                 }
             }
             .padding(.vertical, 2)
@@ -117,8 +157,11 @@ struct TrixBlockView: View {
         case .image(let url):
             ZoomableTrixImage(url: url)
 
-        case .youtube(let id):
-            YouTubeCard(id: id)
+        case .video(let url):
+            VideoBlockView(url: url)
+
+        case .youtube(let id, let portrait):
+            YouTubeCard(id: id, portrait: portrait)
 
         case .table(let rows):
             TrixTableView(rows: rows)
@@ -175,6 +218,7 @@ struct TrixTableView: View {
 /// the video (YouTube app or browser).
 struct YouTubeCard: View {
     let id: String
+    var portrait = false     // phone-portrait video / Short → 9:16 card, not pillar-boxed 16:9
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -191,11 +235,67 @@ struct YouTubeCard: View {
                     .foregroundStyle(.white.opacity(0.9))
                     .shadow(radius: 6)
             }
-            .frame(height: 200)
-            .frame(maxWidth: .infinity)
+            .frame(width: portrait ? 225 : nil, height: portrait ? 400 : 200)
+            .frame(maxWidth: portrait ? nil : .infinity)
             .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// A video attachment (member phone clip / screen recording) that wasn't offloaded
+/// to YouTube — previously rendered as a bare "attachment" link the native app
+/// couldn't play. Shows a play card; tapping opens a full-screen AVKit player.
+/// (Attachment URLs are fetched the same way as inline images, which already work.)
+struct VideoBlockView: View {
+    let url: URL
+    @State private var playing = false
+    private var name: String { url.lastPathComponent.removingPercentEncoding ?? url.lastPathComponent }
+
+    var body: some View {
+        Button { playing = true } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10).fill(Color.black)
+                VStack(spacing: 8) {
+                    Image(systemName: "play.circle.fill")
+                        .font(.system(size: 52)).foregroundStyle(.white.opacity(0.92)).shadow(radius: 6)
+                    Text(name).font(.caption).foregroundStyle(.white.opacity(0.8))
+                        .lineLimit(1).truncationMode(.middle).padding(.horizontal, 14)
+                }
+            }
+            .frame(height: 200).frame(maxWidth: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+        .fullScreenCover(isPresented: $playing) { VideoPlayerSheet(url: url) }
+    }
+}
+
+/// Full-screen player for a tapped video attachment; autoplays, ✕ to close.
+struct VideoPlayerSheet: View {
+    let url: URL
+    @Environment(\.dismiss) private var dismiss
+    @State private var player: AVPlayer?
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            VideoPlayer(player: player)
+                .ignoresSafeArea()
+                .onAppear { let p = AVPlayer(url: url); player = p; p.play() }
+                .onDisappear { player?.pause(); player = nil }
+            VStack {
+                HStack {
+                    Spacer()
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 30)).foregroundStyle(.white.opacity(0.9)).shadow(radius: 4)
+                    }
+                    .padding(16)
+                }
+                Spacer()
+            }
+        }
     }
 }
 
@@ -206,9 +306,21 @@ struct YouTubeCard: View {
 struct ZoomableTrixImage: View {
     let url: URL
     @State private var showFull = false
+    @State private var useOriginal = false
+    @State private var retries = 0          // failed loads of the original so far
+    @State private var attempt = 0          // bumps the AsyncImage identity to force a reload
+
+    /// Inline display uses a width-capped .avif variant (fast to fetch); the
+    /// zoom viewer always opens the full original. If the scaled variant fails to
+    /// load we fall back to the original inline too, so images never break.
+    /// A failure is often transient (a slow first-time server encode, a dropped
+    /// request on a flaky network), so the original is retried with a short backoff
+    /// before we give up and show "Image unavailable".
+    private var displayURL: URL { useOriginal ? url : AppConfig.scaledImageURL(url) }
+    private static let maxRetries = 2
 
     var body: some View {
-        AsyncImage(url: url) { phase in
+        AsyncImage(url: displayURL) { phase in
             switch phase {
             case .success(let img):
                 img.resizable().scaledToFit()
@@ -218,11 +330,25 @@ struct ZoomableTrixImage: View {
                     .contentShape(Rectangle())
                     .onTapGesture { showFull = true }
             case .failure:
-                TrixBlockView.placeholder(system: "photo", text: "Image unavailable")
+                if useOriginal && retries >= Self.maxRetries {
+                    TrixBlockView.placeholder(system: "photo", text: T("Image unavailable"))
+                } else if useOriginal {
+                    // the original failed too → wait a moment and try it again
+                    TrixBlockView.placeholder(system: "photo", text: nil).overlay(ProgressView())
+                        .task(id: attempt) {
+                            try? await Task.sleep(nanoseconds: UInt64(1_500_000_000 * (retries + 1)))
+                            retries += 1; attempt += 1
+                        }
+                } else {
+                    // scaled variant failed → retry with the untouched original
+                    TrixBlockView.placeholder(system: "photo", text: nil).overlay(ProgressView())
+                        .onAppear { useOriginal = true }
+                }
             default:
                 TrixBlockView.placeholder(system: "photo", text: nil).overlay(ProgressView())
             }
         }
+        .id(attempt)
         .fullScreenCover(isPresented: $showFull) { ImageZoomViewer(url: url) }
     }
 }

@@ -6,7 +6,11 @@ import SwiftUI
 // intercepts). Unknown tags are dropped; their text is kept.
 enum Inline {
 
-    static func parse(_ html: String, linkColor: Color = .dcLink) -> AttributedString {
+    /// `collapseWhitespace` applies the browser's rule to HTML: source spaces, tabs and
+    /// newlines are ONE space, dropped at a line start and before a `<br>` / the end.
+    /// (A raw "\n" before `</div>` otherwise became an extra blank line.) Pass false
+    /// for legacy plain-text bodies, whose newlines are their only line breaks.
+    static func parse(_ html: String, linkColor: Color = .dcLink, collapseWhitespace: Bool = true) -> AttributedString {
         var out = AttributedString()
         var bold = false, italic = false, code = false, under = false
         var hrefStack: [String] = []
@@ -15,25 +19,39 @@ enum Inline {
         let ns = html as NSString
         var i = 0
 
+        func dropTrailingSpace() {
+            if collapseWhitespace, out.characters.last == " " { out.characters.removeLast() }
+        }
+
         func appendText(_ raw: String) {
+            var raw = raw
+            if collapseWhitespace {
+                raw = raw.replacingOccurrences(of: "[ \t\r\n]+", with: " ", options: .regularExpression)
+                if raw.hasPrefix(" "), out.characters.isEmpty || out.characters.last == "\n" || out.characters.last == " " {
+                    raw.removeFirst()
+                }
+            }
             let text = decodeEntities(raw)
             guard !text.isEmpty else { return }
             var run = AttributedString(text)
-            var font: Font = code ? .system(.body, design: .monospaced) : .body
-            if bold && italic { font = font.bold().italic() }
-            else if bold { font = font.bold() }
-            else if italic { font = font.italic() }
-            run.font = font
+            // Style via presentation intents, NOT a run font: a run-level `.font`
+            // overrides the view's `.font(…)`, which pinned every heading and every
+            // screen's 15/16pt body to `.body`. Intents compose with the view's font.
+            var intent: InlinePresentationIntent = []
+            if bold { intent.insert(.stronglyEmphasized) }
+            if italic { intent.insert(.emphasized) }
+            if code { intent.insert(.code) }
             if under { run.underlineStyle = .single }
             if let bg = colorStack.last(where: { $0.bg != nil })?.bg { run.backgroundColor = bg }
             if let href = hrefStack.last {
                 let isMention = href.hasPrefix("#/p/")
                 run.foregroundColor = isMention ? .dcAccentInk : linkColor   // green mention, link color
-                if isMention { run.font = font.bold() } else { run.underlineStyle = .single }
+                if isMention { intent.insert(.stronglyEmphasized) } else { run.underlineStyle = .single }
                 if let url = routeURL(href) { run.link = url }
             } else if let fg = colorStack.last(where: { $0.fg != nil })?.fg {
                 run.foregroundColor = fg
             }
+            if !intent.isEmpty { run.inlinePresentationIntent = intent }
             out.append(run)
         }
 
@@ -57,7 +75,7 @@ enum Inline {
             case "em", "i": italic = !closing
             case "code": code = !closing
             case "u": under = !closing
-            case "br": out.append(AttributedString("\n"))
+            case "br": dropTrailingSpace(); out.append(AttributedString("\n"))
             case "a":
                 if closing { if !hrefStack.isEmpty { hrefStack.removeLast() } }
                 else { hrefStack.append(TrixParser.attrValue(tagContent, "href") ?? "") }
@@ -74,6 +92,7 @@ enum Inline {
             default: break
             }
         }
+        dropTrailingSpace()
         return out
     }
 
@@ -100,18 +119,39 @@ enum Inline {
         return (fg: value("color"), bg: value("background-color") ?? value("background"))
     }
 
+    /// A near-black or near-white text colour carries no real colour intent and
+    /// breaks in one theme (a near-black picked in light mode is invisible on the
+    /// dark background, and vice-versa). Returning nil for these lets the text
+    /// inherit the theme label colour, which is legible in BOTH modes — the native
+    /// counterpart of the web legibility guard. (Native renders on system/bubble
+    /// backgrounds we don't resolve per-run, so this handles the common extreme
+    /// case rather than a full WCAG contrast check against the exact background.)
+    static func isIllegibleExtreme(_ r: Double, _ g: Double, _ b: Double) -> Bool {
+        return (r < 40 && g < 40 && b < 40) || (r > 220 && g > 220 && b > 220)
+    }
+    private static func hexRGB(_ hex: String) -> (Double, Double, Double)? {
+        var h = hex; if h.hasPrefix("#") { h.removeFirst() }
+        if h.count == 3 { h = h.map { "\($0)\($0)" }.joined() }
+        guard h.count == 6, let n = Int(h, radix: 16) else { return nil }
+        return (Double((n >> 16) & 0xff), Double((n >> 8) & 0xff), Double(n & 0xff))
+    }
+
     /// Parse a single CSS colour value (#hex, rgb()/rgba(), or a few named).
     static func cssColor(_ raw: String) -> Color? {
         let v = raw.trimmingCharacters(in: .whitespaces).lowercased()
-        if v.hasPrefix("#") { return Color(hex: v) }
+        if v.hasPrefix("#") {
+            if let (r, g, b) = hexRGB(v) {
+                if isIllegibleExtreme(r, g, b) { return nil }   // near-black/near-white → inherit theme colour
+                return Color(.sRGB, red: r / 255, green: g / 255, blue: b / 255, opacity: 1)
+            }
+            return Color(hex: v)
+        }
         if v.hasPrefix("rgb") {
             let nums = v.components(separatedBy: CharacterSet(charactersIn: "0123456789.").inverted).filter { !$0.isEmpty }
             if nums.count >= 3, let r = Double(nums[0]), let g = Double(nums[1]), let b = Double(nums[2]) {
-                // The native composer used to stamp the editor's default text colour as
-                // rgba(0,0,0,0.847) (near-black) — ignore near-black/near-white rgb() so
-                // it inherits the bubble/column colour (white on a "mine" bubble) instead
-                // of rendering black-on-blue. Deliberate palette colours are #hex, not rgb().
-                if (r < 20 && g < 20 && b < 20) || (r > 235 && g > 235 && b > 235) { return nil }
+                // Near-black/near-white (e.g. the composer's default rgba(0,0,0,0.847))
+                // → inherit the theme/bubble colour instead of rendering black-on-blue.
+                if isIllegibleExtreme(r, g, b) { return nil }
                 let a = nums.count >= 4 ? (Double(nums[3]) ?? 1) : 1
                 return Color(.sRGB, red: r/255, green: g/255, blue: b/255, opacity: a)
             }
