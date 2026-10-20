@@ -102,16 +102,32 @@ struct TranslatableText: View {
     }
 }
 
+extension EnvironmentValues {
+    /// When set, links and @mentions render in this colour instead of their own
+    /// blue/green — for content on a coloured background (the sender's own blue
+    /// DM bubble, where a blue link was invisible).
+    @Entry var dcLinkOverride: Color? = nil
+}
+
 /// One rendered block. A concrete type (not an opaque `some View`) so `.quote`
 /// can recurse into nested blocks.
 struct TrixBlockView: View {
     let block: TrixBlock
     var paragraphSpacing: CGFloat = 0
+    @Environment(\.dcLinkOverride) private var linkOverride
+
+    /// Recolour link runs (links + mentions both carry `.link`) when an override is set.
+    private func links(_ a: AttributedString) -> AttributedString {
+        guard let c = linkOverride else { return a }
+        var a = a
+        for run in a.runs where run.link != nil { a[run.range].foregroundColor = c }
+        return a
+    }
 
     var body: some View {
         switch block {
         case .paragraph(let a):
-            Text(a).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+            Text(links(a)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
 
         case .spacer(let lines):
             // Blank lines at the current font size (Text(" ") = exactly one line).
@@ -119,7 +135,7 @@ struct TrixBlockView: View {
                 .accessibilityHidden(true)
 
         case .heading(let a, let level):
-            Text(a)
+            Text(links(a))
                 // One step below the system title sizes so a body <h1> never outranks
                 // the thread subject (24pt heavy) — on the web they're the same 26px.
                 .font(level <= 1 ? .title2.bold() : (level == 2 ? .title3.bold() : .headline))
@@ -145,7 +161,7 @@ struct TrixBlockView: View {
                         Text(ordered ? "\(idx + 1)." : "•")
                             .foregroundStyle(.secondary)
                             .frame(minWidth: 18, alignment: .trailing)
-                        Text(item).fixedSize(horizontal: false, vertical: true)
+                        Text(links(item)).fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
