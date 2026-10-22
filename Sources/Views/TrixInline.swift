@@ -10,7 +10,7 @@ enum Inline {
     /// newlines are ONE space, dropped at a line start and before a `<br>` / the end.
     /// (A raw "\n" before `</div>` otherwise became an extra blank line.) Pass false
     /// for legacy plain-text bodies, whose newlines are their only line breaks.
-    static func parse(_ html: String, linkColor: Color = .dcLink, collapseWhitespace: Bool = true) -> AttributedString {
+    static func parse(_ html: String, collapseWhitespace: Bool = true) -> AttributedString {
         var out = AttributedString()
         var bold = false, italic = false, code = false, under = false
         var hrefStack: [String] = []
@@ -45,7 +45,7 @@ enum Inline {
             if let bg = colorStack.last(where: { $0.bg != nil })?.bg { run.backgroundColor = bg }
             if let href = hrefStack.last {
                 let isMention = href.hasPrefix("#/p/")
-                run.foregroundColor = isMention ? .dcAccentInk : linkColor   // green mention, link color
+                run.foregroundColor = isMention ? .dcAccentInk : .dcLink   // green mention, blue link
                 if isMention { intent.insert(.stronglyEmphasized) } else { run.underlineStyle = .single }
                 if let url = routeURL(href) { run.link = url }
             } else if let fg = colorStack.last(where: { $0.fg != nil })?.fg {

@@ -499,7 +499,7 @@ struct DMBubble: View {
             if showSender, !message.isMine, let name = message.sender?.name, !name.isEmpty {
                 Text(name).font(.system(size: 11, weight: .bold)).foregroundStyle(senderTint)
             }
-            TranslatableText(original: message.html, translated: message.bodyTr, linkColor: message.isMine ? .white : .dcLink, paragraphSpacing: 6)
+            TranslatableText(original: message.html, translated: message.bodyTr, paragraphSpacing: 6)
                 .font(.system(size: 15))
                 .foregroundStyle(message.isMine ? Color.white : Color.dcInk)
                 .environment(\.dcLinkOverride, message.isMine ? Color.white : nil)   // blue links vanish on the blue bubble

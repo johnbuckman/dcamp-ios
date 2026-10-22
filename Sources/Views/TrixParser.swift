@@ -39,18 +39,18 @@ enum TrixBlock: Identifiable {
 
 enum TrixParser {
 
-    static func parse(_ html: String, linkColor: Color = .dcLink) -> [TrixBlock] {
+    static func parse(_ html: String) -> [TrixBlock] {
         // Legacy plain-text body (some imported comments): no tags, so its newlines
         // ARE the line breaks — render as-is instead of collapsing them like HTML.
         if html.range(of: "<[A-Za-z/!]", options: .regularExpression) == nil {
-            let a = Inline.parse(html.trimmingCharacters(in: .whitespacesAndNewlines), linkColor: linkColor, collapseWhitespace: false)
+            let a = Inline.parse(html.trimmingCharacters(in: .whitespacesAndNewlines), collapseWhitespace: false)
             return a.characters.isEmpty ? [] : [.paragraph(a)]
         }
-        return parseBlocks(html, linkColor: linkColor)
+        return parseBlocks(html)
     }
 
     /// Block-level parse of HTML (also used recursively for blockquotes / wrapper divs).
-    private static func parseBlocks(_ html: String, linkColor: Color = .dcLink) -> [TrixBlock] {
+    private static func parseBlocks(_ html: String) -> [TrixBlock] {
         var blocks: [TrixBlock] = []
         // Walk top-level block elements in document order.
         let scanner = BlockScanner(html)
@@ -63,21 +63,21 @@ enum TrixParser {
                 // the first photo with every word of text dropped.
                 if isEmbedElement(attrs), let m = mediaBlock(inner, attrs) { blocks.append(m) }
                 else if tag == "div", inner.range(of: "<(div|p|ul|ol|h[1-3]|blockquote|table)\\b", options: [.regularExpression, .caseInsensitive]) != nil {
-                    blocks.append(contentsOf: parseBlocks(inner, linkColor: linkColor))   // a wrapper div: its children are blocks
+                    blocks.append(contentsOf: parseBlocks(inner))   // a wrapper div: its children are blocks
                 }
-                else { blocks.append(contentsOf: splitMixed(inner, linkColor: linkColor)) }
+                else { blocks.append(contentsOf: splitMixed(inner)) }
             case "h1", "h2", "h3":
-                blocks.append(.heading(blockText(inner, linkColor: linkColor), level: Int(String(tag.dropFirst())) ?? 2))
+                blocks.append(.heading(blockText(inner), level: Int(String(tag.dropFirst())) ?? 2))
             case "ul", "ol":
-                let items = listItems(inner, linkColor: linkColor)
+                let items = listItems(inner)
                 if !items.isEmpty { blocks.append(.list(items: items, ordered: tag == "ol")) }
             case "blockquote":
-                blocks.append(.quote(parseBlocks(inner, linkColor: linkColor)))
+                blocks.append(.quote(parseBlocks(inner)))
             case "figure":
                 if let m = mediaBlock(inner, attrs) { blocks.append(m) }
-                else if let b = textBlock(inner, linkColor: linkColor) { blocks.append(b) }   // e.g. a PDF/file attachment's link
+                else if let b = textBlock(inner) { blocks.append(b) }   // e.g. a PDF/file attachment's link
             case "table":
-                let rows = tableRows(inner, linkColor: linkColor)
+                let rows = tableRows(inner)
                 if !rows.isEmpty { blocks.append(.table(rows: rows)) }
             case "hr":
                 blocks.append(.rule)
@@ -88,12 +88,12 @@ enum TrixParser {
             case "iframe":
                 if let yt = youtubeInfo(from: "", attrs: attrs) { blocks.append(.youtube(id: yt.id, portrait: yt.portrait)) }
             default:
-                if let b = textBlock(inner, linkColor: linkColor) { blocks.append(b) }
+                if let b = textBlock(inner) { blocks.append(b) }
             }
         }
         // Fallback: no recognizable blocks → treat the whole thing as one paragraph.
         if blocks.isEmpty {
-            let a = blockText(html, linkColor: linkColor)
+            let a = blockText(html)
             if !a.characters.isEmpty { blocks.append(.paragraph(a)) }
         }
         return blocks
@@ -121,23 +121,23 @@ enum TrixParser {
     /// A block's inner HTML → its text and media blocks in document order. Text
     /// between two media elements follows the same line rules as any block (a
     /// leading `<br>` after a photo is a blank line, as in the browser).
-    private static func splitMixed(_ inner: String, linkColor: Color) -> [TrixBlock] {
+    private static func splitMixed(_ inner: String) -> [TrixBlock] {
         let ns = inner as NSString
         let matches = mediaElementRe.matches(in: inner, range: NSRange(location: 0, length: ns.length))
-        guard !matches.isEmpty else { return textBlock(inner, linkColor: linkColor).map { [$0] } ?? [] }
+        guard !matches.isEmpty else { return textBlock(inner).map { [$0] } ?? [] }
         var out: [TrixBlock] = []
         var last = 0
         for m in matches {
-            if m.range.location > last, let t = textBlock(ns.substring(with: NSRange(location: last, length: m.range.location - last)), linkColor: linkColor) {
+            if m.range.location > last, let t = textBlock(ns.substring(with: NSRange(location: last, length: m.range.location - last))) {
                 out.append(t)
             }
             let el = ns.substring(with: m.range)
-            if isBareYouTubeLink(el) { if let t = textBlock(el, linkColor: linkColor) { out.append(t) } }
+            if isBareYouTubeLink(el) { if let t = textBlock(el) { out.append(t) } }
             else if let media = mediaBlock(el, "") { out.append(media) }
-            else if let t = textBlock(el, linkColor: linkColor) { out.append(t) }       // a file attachment: keep its link text
+            else if let t = textBlock(el) { out.append(t) }       // a file attachment: keep its link text
             last = m.range.location + m.range.length
         }
-        if last < ns.length, let t = textBlock(ns.substring(from: last), linkColor: linkColor) { out.append(t) }
+        if last < ns.length, let t = textBlock(ns.substring(from: last)) { out.append(t) }
         return out
     }
 
@@ -165,8 +165,8 @@ enum TrixParser {
     /// A text block's inline content, with HTML's line-box rule applied: a `<br>`
     /// that ENDS a block adds no line in a browser (`text<br>` is one line), but a
     /// trailing "\n" makes SwiftUI's Text one line taller — so drop exactly one.
-    static func blockText(_ html: String, linkColor: Color) -> AttributedString {
-        trimmingTrailingBreak(Inline.parse(html, linkColor: linkColor))
+    static func blockText(_ html: String) -> AttributedString {
+        trimmingTrailingBreak(Inline.parse(html))
     }
 
     private static func trimmingTrailingBreak(_ a: AttributedString) -> AttributedString {
@@ -178,8 +178,8 @@ enum TrixParser {
     /// `<p>`/`<div>` text → a paragraph, a blank-line spacer, or nothing. A block
     /// holding only `<br>`s / `&nbsp;` is one browser line per `<br>` (min 1); one
     /// that is truly empty (`<p></p>`, `<p> </p>`) has no height, so it's dropped.
-    private static func textBlock(_ inner: String, linkColor: Color) -> TrixBlock? {
-        let raw = Inline.parse(inner, linkColor: linkColor)
+    private static func textBlock(_ inner: String) -> TrixBlock? {
+        let raw = Inline.parse(inner)
         guard !raw.characters.isEmpty else { return nil }
         if raw.characters.allSatisfy(\.isWhitespace) {
             let breaks = raw.characters.filter { $0 == "\n" }.count
@@ -191,13 +191,13 @@ enum TrixParser {
 
     // MARK: list items
 
-    private static func listItems(_ inner: String, linkColor: Color) -> [AttributedString] {
+    private static func listItems(_ inner: String) -> [AttributedString] {
         var items: [AttributedString] = []
         let ns = inner as NSString
         let re = try! NSRegularExpression(pattern: "<li[^>]*>(.*?)</li>", options: [.dotMatchesLineSeparators, .caseInsensitive])
         for m in re.matches(in: inner, range: NSRange(location: 0, length: ns.length)) {
             let s = ns.substring(with: m.range(at: 1))
-            let a = blockText(s, linkColor: linkColor)
+            let a = blockText(s)
             if !a.characters.isEmpty { items.append(a) }
         }
         return items
@@ -205,7 +205,7 @@ enum TrixParser {
 
     // MARK: table
 
-    private static func tableRows(_ inner: String, linkColor: Color) -> [[AttributedString]] {
+    private static func tableRows(_ inner: String) -> [[AttributedString]] {
         var rows: [[AttributedString]] = []
         let ns = inner as NSString
         let trRe = try! NSRegularExpression(pattern: "<tr[^>]*>(.*?)</tr>", options: [.dotMatchesLineSeparators, .caseInsensitive])
@@ -215,7 +215,7 @@ enum TrixParser {
             let rns = rowHTML as NSString
             var cells: [AttributedString] = []
             for cm in cellRe.matches(in: rowHTML, range: NSRange(location: 0, length: rns.length)) {
-                cells.append(blockText(rns.substring(with: cm.range(at: 1)), linkColor: linkColor))
+                cells.append(blockText(rns.substring(with: cm.range(at: 1))))
             }
             if !cells.isEmpty { rows.append(cells) }
         }
