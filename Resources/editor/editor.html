@@ -386,9 +386,24 @@
   editorEl.addEventListener("paste", function () {
     try { pasteStart = editorEl.editor.getSelectedRange()[0]; } catch (e) { pasteStart = null; }
   }, true);
+  // A URL copied from Safari/Share arrives as a pasteboard URL, not text: Trix links
+  // it itself (createLinkHTML → <a href="X">X</a>), so p.html is set. Return X so it
+  // still gets the page-title upgrade; any other rich paste returns "".
+  function urlFromLinkPaste(html) {
+    var a = new DOMParser().parseFromString(html, "text/html").body;   // inert: no handlers run
+    var l = a.firstChild;
+    if (a.childNodes.length !== 1 || !l || l.nodeName !== "A") return "";
+    var href = l.getAttribute("href") || "";
+    return (isBareUrl(href) && l.textContent === href) ? href : "";
+  }
   editorEl.addEventListener("trix-paste", function (e) {
     var p = e.paste || {}, ed2 = editorEl.editor, start = pasteStart; pasteStart = null;
-    if (!ed2 || p.html || start == null) return;           // rich paste → leave to Trix
+    if (ed2 && p.html) {                                   // URL pasted as a link → just fetch its title
+      var lu = urlFromLinkPaste(p.html);
+      if (lu) post({ type: "urltitle", url: lu });
+      return;
+    }
+    if (!ed2 || start == null) return;                     // other rich paste → leave to Trix
     var s = (p.string || "").trim();
     if (!isBareUrl(s)) return;
     var end = ed2.getSelectedRange()[1];

@@ -1,8 +1,9 @@
 import SwiftUI
 
 /// Full-text search across threads, comments, chat and DMs, plus people —
-/// with facets (type, forum, experts-only), sort, match-quality, term
-/// highlighting, row metadata, and an inline "Ask Derek" answer panel.
+/// with facets (type, forum, experts-only), sort, good matches first with a
+/// "Show N more results…" row for the weak tail, term highlighting, row
+/// metadata, and an inline "Ask Derek" answer panel.
 struct SearchView: View {
     @Binding var path: [Dest]
     @Environment(Router.self) private var router
@@ -14,9 +15,11 @@ struct SearchView: View {
     @State private var types: Set<String> = ["messages", "comments", "chat", "pings"]
     @State private var years = 0
     @State private var sortNewest = false
-    @State private var goodOnly = false
+    @State private var showWeak = false          // weak-relevance tail expanded ("Show N more results…")
     @State private var selectedForum: Int? = nil
-    @State private var expertsOnly = true
+    @State private var expertsOnly = false       // all members by default; experts is opt-in
+    @State private var showAllPeople = false     // People capped at peopleCap rows so results stay in view
+    private let peopleCap = 5
 
     // Ask-Derek
     @State private var derekAnswer: String? = nil
@@ -30,10 +33,15 @@ struct SearchView: View {
 
     // MARK: derived
 
+    private var forumResults: [SearchHit] {
+        guard let f = selectedForum else { return response.results }
+        return response.results.filter { $0.forumId == f }
+    }
+    /// Good matches = scoring at least half the top result; the rest stay behind
+    /// the "Show N more results…" row until tapped.
     private var visibleResults: [SearchHit] {
-        var r = response.results
-        if let f = selectedForum { r = r.filter { $0.forumId == f } }
-        if goodOnly, let top = r.compactMap({ $0.score }).max(), top > 0 {
+        var r = forumResults
+        if !showWeak, let top = r.compactMap({ $0.score }).max(), top > 0 {
             r = r.filter { ($0.score ?? 0) >= top * 0.5 }
         }
         if sortNewest { r.sort { ($0.createdAt ?? 0) > ($1.createdAt ?? 0) } }
@@ -55,7 +63,7 @@ struct SearchView: View {
             Section { filterBar }
             if !visiblePeople.isEmpty {
                 Section(T("People") + " (\(visiblePeople.count))") {
-                    ForEach(visiblePeople) { person in
+                    ForEach(showAllPeople ? visiblePeople : Array(visiblePeople.prefix(peopleCap))) { person in
                         Button { router.personID = person.id } label: {
                             HStack(spacing: 10) {
                                 Avatar(person: person, size: 32)
@@ -68,12 +76,25 @@ struct SearchView: View {
                             }
                         }
                     }
+                    if !showAllPeople && visiblePeople.count > peopleCap {
+                        Button { showAllPeople = true } label: {
+                            Text(T("Show all {n} people").replacingOccurrences(of: "{n}", with: "\(visiblePeople.count)"))
+                                .font(.system(size: 14, weight: .semibold)).foregroundStyle(Color.dcAccentInk)
+                        }
+                    }
                 }
             }
             if !visibleResults.isEmpty {
                 Section(T("Results") + " (\(visibleResults.count))") {
                     ForEach(visibleResults, id: \.uid) { hit in
                         Button { open(hit) } label: { SearchHitRow(hit: hit, terms: queryTerms) }
+                    }
+                    let weak = forumResults.count - visibleResults.count
+                    if weak > 0 {
+                        Button { showWeak = true } label: {
+                            Text(weak == 1 ? T("Show 1 more result…") : T("Show {n} more results…").replacingOccurrences(of: "{n}", with: "\(weak)"))
+                                .font(.system(size: 14, weight: .semibold)).foregroundStyle(Color.dcAccentInk)
+                        }
                     }
                 }
             }
@@ -91,6 +112,13 @@ struct SearchView: View {
             }
         }
         .sheet(isPresented: $showHelp) { SearchHelpSheet() }
+        #if DEBUG
+        .onAppear {   // headless harness: DCAMP_SHOT_QUERY pre-fills the query, DCAMP_SHOT_MORE=1 expands the weak tail
+            let env = ProcessInfo.processInfo.environment
+            if query.isEmpty, let q = env["DCAMP_SHOT_QUERY"] { query = q }
+            if env["DCAMP_SHOT_MORE"] == "1" { Task { try? await Task.sleep(nanoseconds: 3_000_000_000); showWeak = true } }
+        }
+        #endif
     }
 
     // MARK: Ask-Derek
@@ -157,16 +185,15 @@ struct SearchView: View {
                             Text(T("Relevance")).tag(false); Text(T("Newest")).tag(true)
                         }
                     } label: { DCFilterPill(icon: "arrow.up.arrow.down", title: sortNewest ? T("Newest") : T("Relevance"), active: false) {}.allowsHitTesting(false) }
-                    DCFilterPill(icon: "checkmark.seal", title: T("Best matches"), active: goodOnly) { goodOnly.toggle() }
                 }
             }
             if let forums = response.forums, forums.count > 1 {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
-                        DCFilterPill(icon: "square.grid.2x2", title: T("All forums"), active: selectedForum == nil) { selectedForum = nil }
+                        DCFilterPill(icon: "square.grid.2x2", title: T("All forums"), active: selectedForum == nil) { selectedForum = nil; showWeak = false }
                         ForEach(forums) { f in
                             DCFilterPill(icon: "bubble.left", title: f.name, active: selectedForum == f.id) {
-                                selectedForum = (selectedForum == f.id) ? nil : f.id
+                                selectedForum = (selectedForum == f.id) ? nil : f.id; showWeak = false
                             }
                         }
                     }
@@ -206,7 +233,7 @@ struct SearchView: View {
             if Task.isCancelled { return }
             searching = true; defer { searching = false }
             let t = types.isEmpty ? "messages,comments,chat,pings" : types.joined(separator: ",")
-            if let r = try? await api.search(q, types: t, years: years) { response = r; selectedForum = nil }
+            if let r = try? await api.search(q, types: t, years: years) { response = r; selectedForum = nil; showWeak = false; showAllPeople = false }
         }
     }
 
@@ -304,7 +331,7 @@ struct SearchHelpSheet: View {
                 Section(T("Tips")) {
                     Label(T("Type two or more letters to search."), systemImage: "textformat")
                     Label(T("Filter by Threads, Comments, Chat or DMs."), systemImage: "line.3.horizontal.decrease")
-                    Label(T("Sort by relevance or newest; “Best matches” hides weak hits."), systemImage: "arrow.up.arrow.down")
+                    Label(T("Sort by relevance or newest; weaker hits wait behind “Show more results”."), systemImage: "arrow.up.arrow.down")
                     Label(T("“Experts only” narrows people to recognised experts."), systemImage: "star.fill")
                     Label(T("Ask Derek for an AI answer drawn from the whole forum."), systemImage: "sparkles")
                 }
