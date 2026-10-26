@@ -177,12 +177,20 @@ for the Test host.
 > local account can be used; **never copy a real member's email/password into this repo,
 > a commit message, or an issue.**
 
-- **Primary test user = dcamp person #5** — a real machine owner, so `can_post=1`. Look it up
-  locally: `select id,name,email from dcamp_people where id=5` then join `users` for the pw.
-- A synthetic `…@example.com` account was made postable via local fixtures: a `dcamp_members`
-  row, a qualifying `carts`+`cart_detail` DE1 order (survives the owner reconcile), and a fake
+- **The local DB is periodically refreshed from live**, which wipes anything made only for
+  testing. The old synthetic `…@example.com` poster account, its fixtures and its test content
+  are GONE (as of 2026-10-26; ids like thread 11692 now belong to real live threads).
+- **Read-only testing (screenshots, browsing)**: insert a throwaway login —
+  `insert into users(email,pw) values('zztest-…@example.com','<pw>')` (only email+pw are
+  NOT NULL; local `pw` is plaintext) — use it with `DCAMP_SMOKE_EMAIL/_PW`, then delete it
+  AND the `dcamp_people` row its first login created (`where email='zztest-…@example.com'`).
+- **Posting tests** need an owner: dcamp person #5 is a real machine owner (`can_post=1`) —
+  `select id,name,email from dcamp_people where id=5`, then join `users` for the pw. To make a
+  throwaway account postable, re-create the fixtures: a `dcamp_members` row, a qualifying
+  `carts`+`cart_detail` DE1 order (survives the owner reconcile), and a fake
   `dcamp_bc_user_tokens` row (satisfies the beta "link Basecamp to post" gate).
-- Test content created: thread **11692**, DM convo **125**, notification 8485.
+- **Pointing a sim build at dev without changing its saved setting**: pass the launch argument
+  `-dcamp_use_local_dev YES` (UserDefaults argument domain) to `simctl launch`.
 - **Posting requires BOTH**: owner (`dcamp_members` matched via the *cookie email*) AND
   BC-linked. If an owner sees the read-only notice, suspect an email mismatch between their
   login and their owner record.
