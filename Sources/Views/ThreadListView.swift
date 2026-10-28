@@ -11,6 +11,8 @@ struct ThreadListView: View {
     @Environment(ForumFilterStore.self) private var forumFilter
     @State private var rows: [MessageRow] = []
     @State private var total = 0
+    @State private var fetched = 0              // server offset for the next page (rows may skip repeats)
+    @State private var loadedFor: String?       // filter the rows were loaded with
     @State private var loading = false
     @State private var statusFilter: ProblemStatus = .unsolved
     @State private var composing = false
@@ -53,7 +55,12 @@ struct ThreadListView: View {
             FilterSheet(onApply: { Task { await load(reset: true) } })
                 .environment(session).environment(forumFilter)
         }
-        .task(id: board.id) { await load(reset: true) }
+        // .task re-runs every time the list reappears (back from a thread): reloading then
+        // cut the rows to the first page and lost the reader's place, so only refresh the
+        // rows already shown unless the filter changed meanwhile.
+        .task(id: board.id) {
+            if rows.isEmpty || loadedFor != filterKey { await load(reset: true) } else { await refreshInPlace() }
+        }
         .refreshable { await load(reset: true) }
     }
 
@@ -140,17 +147,38 @@ struct ThreadListView: View {
         }
     }
 
-    private func load(reset: Bool) async {
-        if loading { return }
-        loading = true; defer { loading = false }
-        let offset = reset ? 0 : rows.count
+    private var filterKey: String {
+        "\(statusFilter.rawValue) \(forumFilter.messageParams.sorted { $0.key < $1.key })"
+    }
+
+    private func pageParams(offset: Int) -> [String: String] {
         var params = ["project_id": String(board.id), "offset": String(offset), "limit": "30"]
         params.merge(forumFilter.messageParams) { _, new in new }   // popular / mine / countries
         if isProblems && statusFilter != .all { params["status"] = statusFilter.rawValue }
-        if let page: MessagesPage = try? await api.call("messages", params) {
-            if reset { rows = page.messages } else { rows.append(contentsOf: page.messages) }
+        return params
+    }
+
+    private func load(reset: Bool) async {
+        if loading { return }
+        loading = true; defer { loading = false }
+        let offset = reset ? 0 : fetched
+        if let page: MessagesPage = try? await api.call("messages", pageParams(offset: offset)) {
+            // Latest-activity order: a thread that got a reply since the last page shifts the
+            // rest down, so the next page repeats a row. Skip it (duplicate ForEach ids).
+            if reset { rows = page.messages }
+            else { let have = Set(rows.map(\.id)); rows.append(contentsOf: page.messages.filter { !have.contains($0.id) }) }
+            fetched = offset + page.messages.count
             total = page.total ?? rows.count
+            loadedFor = filterKey
         }
+    }
+
+    /// Back from a thread: update the newest page's rows (reply counts, latest reply) in
+    /// place, without adding or removing rows, so the scroll position stays put.
+    private func refreshInPlace() async {
+        guard let page: MessagesPage = try? await api.call("messages", pageParams(offset: 0)) else { return }
+        let fresh = Dictionary(page.messages.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        for i in rows.indices { if let f = fresh[rows[i].id], f != rows[i] { rows[i] = f } }
     }
 }
 
