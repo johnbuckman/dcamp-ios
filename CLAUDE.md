@@ -177,12 +177,20 @@ for the Test host.
 > local account can be used; **never copy a real member's email/password into this repo,
 > a commit message, or an issue.**
 
-- **Primary test user = dcamp person #5** — a real machine owner, so `can_post=1`. Look it up
-  locally: `select id,name,email from dcamp_people where id=5` then join `users` for the pw.
-- A synthetic `…@example.com` account was made postable via local fixtures: a `dcamp_members`
-  row, a qualifying `carts`+`cart_detail` DE1 order (survives the owner reconcile), and a fake
+- **The local DB is periodically refreshed from live**, which wipes anything made only for
+  testing. The old synthetic `…@example.com` poster account, its fixtures and its test content
+  are GONE (as of 2026-10-26; ids like thread 11692 now belong to real live threads).
+- **Read-only testing (screenshots, browsing)**: insert a throwaway login —
+  `insert into users(email,pw) values('zztest-…@example.com','<pw>')` (only email+pw are
+  NOT NULL; local `pw` is plaintext) — use it with `DCAMP_SMOKE_EMAIL/_PW`, then delete it
+  AND the `dcamp_people` row its first login created (`where email='zztest-…@example.com'`).
+- **Posting tests** need an owner: dcamp person #5 is a real machine owner (`can_post=1`) —
+  `select id,name,email from dcamp_people where id=5`, then join `users` for the pw. To make a
+  throwaway account postable, re-create the fixtures: a `dcamp_members` row, a qualifying
+  `carts`+`cart_detail` DE1 order (survives the owner reconcile), and a fake
   `dcamp_bc_user_tokens` row (satisfies the beta "link Basecamp to post" gate).
-- Test content created: thread **11692**, DM convo **125**, notification 8485.
+- **Pointing a sim build at dev without changing its saved setting**: pass the launch argument
+  `-dcamp_use_local_dev YES` (UserDefaults argument domain) to `simctl launch`.
 - **Posting requires BOTH**: owner (`dcamp_members` matched via the *cookie email*) AND
   BC-linked. If an owner sees the read-only notice, suspect an email mismatch between their
   login and their owner record.
@@ -226,11 +234,12 @@ bot replies; coffee-cup app icon.
 
 - **This repo**: `github.com/johnbuckman/dcamp-ios` (PUBLIC), branch `main`. Each version is a
   commit that bumps `project.yml` `MARKETING_VERSION` + `CURRENT_PROJECT_VERSION`
-  (v1.19 = `08a809b`). `git log` / GitHub releases are the version history.
+  (v1.22 = `15f2c86`, the first Mac release). `git log` / GitHub releases are the version history.
 - **Server**: the native lane (`dcamp_native.tcl`, bearer auth, OAuth2 browser sign-in) is LIVE
   on decentespresso.com; the app defaults to Live (§5). Server changes go through `/d` (CVS +
   git mirror) and John deploys them himself via `/admin/recvs`.
-- **Release recipe** (unsigned IPA; users re-sign via SideStep/AltStore):
+- **Release recipe** (unsigned IPA, users re-sign via SideStep/AltStore; plus a notarized Mac
+  zip since v1.22):
   1. bump `project.yml` versions → `xcodegen generate` → commit + push.
   2. build from a CLEAN checkout of that commit (`git worktree add --detach <dir> <sha>`) —
      another session may have uncommitted edits in this tree:
@@ -241,9 +250,25 @@ bot replies; coffee-cup app icon.
      `strings Payload/dcamp.app/dcamp | grep -i -E "AuthKey|5XPQQ2VXV8|BEGIN PRIVATE"` (and test creds).
   4. reuse the version-agnostic installer: `gh release download <prev-tag> --repo
      johnbuckman/dcamp-ios --pattern dcamp-installer.zip`.
-  5. `gh release create vX.Y dcamp.ipa dcamp-installer.zip --repo johnbuckman/dcamp-ios
-     --target <FULL 40-char sha> --prerelease --notes-file notes.md` (a short sha is rejected).
-  6. wait ~1 min, then `gh workflow run "Update app catalog" --repo johnbuckman/SideStep` —
+  5. Mac app (Developer ID, team XLS3XF57J8, notary profile `bping-notary`), same worktree:
+     `xcodebuild -scheme Dcamp -destination 'platform=macOS,variant=Mac Catalyst' -configuration Release
+     -derivedDataPath <dd-mac> CODE_SIGN_IDENTITY="Developer ID Application: Vid Tadel (XLS3XF57J8)"
+     CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=XLS3XF57J8 CODE_SIGN_ENTITLEMENTS=<empty-dict.plist>
+     ENABLE_HARDENED_RUNTIME=YES CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO OTHER_CODE_SIGN_FLAGS=--timestamp build`
+     (empty entitlements = push stripped, no profile needed). **Without
+     `CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO` the binary gets `get-task-allow` and notarization is
+     Invalid** (fix after the fact: `codesign --force --options runtime --timestamp --entitlements
+     <empty-dict.plist> --sign "Developer ID Application: Vid Tadel (XLS3XF57J8)" dcamp.app`). Then
+     `ditto -c -k --keepParent dcamp.app dcamp-macos-latest.zip` → `xcrun notarytool submit
+     dcamp-macos-latest.zip --keychain-profile bping-notary --wait` (`notarytool log <id>` for issues)
+     → `xcrun stapler staple dcamp.app` → re-zip (same name) → verify a quarantined copy with
+     `spctl -a -vv -t exec` ("Notarized Developer ID"). Requires macOS 14 (iOS 17 Catalyst).
+  6. `gh release create vX.Y dcamp.ipa dcamp-installer.zip dcamp-macos-latest.zip --repo
+     johnbuckman/dcamp-ios --target <FULL 40-char sha> --latest --notes-file notes.md` (a short sha
+     is rejected). **NOT `--prerelease`** (since v1.22): decentespresso.com/dcamp/help and
+     /downloads#dcamp-osx link `releases/latest/download/dcamp-macos-latest.zip`, and
+     `/releases/latest/` ignores prereleases — the asset name must stay exactly that.
+  7. wait ~1 min, then `gh workflow run "Update app catalog" --repo johnbuckman/SideStep` —
      the SideStep catalog (`sidestep-apps.json`) is BOT-OWNED; never hand-edit it.
 - APNs: key `AuthKey_5XPQQ2VXV8.p8` (team **XLS3XF57J8**) is in this folder but **gitignored**
   (also in CVS `/d/admin/apns/` + 1Password). **Never commit it.** Still TODO for real device

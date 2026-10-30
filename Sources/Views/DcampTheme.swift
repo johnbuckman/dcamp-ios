@@ -144,6 +144,9 @@ struct AuthorLine: View {
     let person: Person?
     var date: Int? = nil
     var tappable: Bool = true
+    /// Thread rows: the reply count flows after the date rather than in a
+    /// column beside the badges, where it stacked.
+    var commentCount: Int? = nil
     @Environment(Router.self) private var router
 
     var body: some View {
@@ -158,6 +161,13 @@ struct AuthorLine: View {
             if let date {
                 Text("· \(RelativeTime.string(date))")
                     .font(.system(size: 13)).foregroundStyle(Color.dcMuted).fixedSize()
+            }
+            if let n = commentCount, n > 0 {
+                HStack(spacing: 6) {
+                    Text("·")
+                    Label("\(n)", systemImage: "bubble.right")
+                }
+                .font(.system(size: 13)).foregroundStyle(Color.dcMuted).fixedSize()
             }
         }
     }

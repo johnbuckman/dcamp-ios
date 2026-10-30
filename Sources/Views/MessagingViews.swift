@@ -345,7 +345,9 @@ struct DMListView: View {
         guard !loading, hasMore else { return }
         loading = true; defer { loading = false }
         guard let r = try? await api.dmConversations(offset: offset, limit: pageSize, q: query.trimmingCharacters(in: .whitespaces)) else { return }
-        convos.append(contentsOf: r.conversations)
+        // Newest-first: a conversation that got a message since the last page repeats here.
+        let have = Set(convos.map(\.id))
+        convos.append(contentsOf: r.conversations.filter { !have.contains($0.id) })
         offset += r.conversations.count
         hasMore = r.hasMore
     }
