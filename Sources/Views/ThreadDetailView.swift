@@ -201,9 +201,9 @@ struct ThreadDetailView: View {
     }
 
     private func messageMenu(_ m: MessageDetail) -> some View {
-        Menu {
+        AnchoredMenu { anchor in
             Button { copyLink() } label: { Label(T("Copy link"), systemImage: "link") }
-            ShareLink(item: permalink(), preview: SharePreview(m.displaySubject, image: Image("DcampMark"))) {
+            Button { anchor.share(url: permalink(), title: m.displaySubject) } label: {
                 Label(T("Share"), systemImage: "square.and.arrow.up")
             }
             if session.canPost {
@@ -250,9 +250,9 @@ struct ThreadDetailView: View {
     }
 
     private func commentMenu(_ c: Comment) -> some View {
-        Menu {
+        AnchoredMenu { anchor in
             Button { copyLink(commentID: c.id) } label: { Label(T("Copy link"), systemImage: "link") }
-            ShareLink(item: permalink(commentID: c.id), preview: SharePreview(commentShareTitle(c), image: Image("DcampMark"))) {
+            Button { anchor.share(url: permalink(commentID: c.id), title: commentShareTitle(c)) } label: {
                 Label(T("Share"), systemImage: "square.and.arrow.up")
             }
             if session.canPost {

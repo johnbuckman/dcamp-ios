@@ -1,4 +1,5 @@
 import SwiftUI
+import LinkPresentation
 
 // MARK: - Color from "#rrggbb"
 
@@ -84,5 +85,88 @@ private struct TapToOpenPerson: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+// MARK: - Share sheet anchored to a ⋯ menu (iPad/Mac-safe replacement for ShareLink-in-Menu)
+
+/// A `ShareLink` inside a `Menu` breaks on iPad/Mac: the menu dismisses, the ShareLink's
+/// source view goes away, and UIKit anchors the share popover to a fallback spot → an empty
+/// bubble under the nav-bar title. Instead, the menu holds one of these: its `view` is a
+/// real UIView sitting behind the ⋯ label (via `ShareAnchorView`), and `share` presents a
+/// `UIActivityViewController` from the top-most VC with its popover pointing at that view
+/// once the menu has finished dismissing. On iPhone it's an ordinary sheet.
+@MainActor final class ShareAnchor {
+    weak var view: UIView?
+
+    func share(url: URL, title: String) {
+        // Let the context menu finish its dismissal animation first; presenting during it
+        // is dropped ("already presenting") or loses the popover source.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            self?.present(url: url, title: title)
+        }
+    }
+
+    private func present(url: URL, title: String) {
+        let window = view?.window
+            ?? UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+                .flatMap(\.windows).first(where: \.isKeyWindow)
+        guard var top = window?.rootViewController else { return }
+        while let p = top.presentedViewController, !p.isBeingDismissed { top = p }
+
+        let avc = UIActivityViewController(activityItems: [ShareLinkItem(url: url, title: title)],
+                                           applicationActivities: nil)
+        if let pop = avc.popoverPresentationController {
+            if let v = view, v.window != nil {
+                pop.sourceView = v
+                pop.sourceRect = v.bounds
+            } else {   // anchor gone (shouldn't happen) — centre of the window, no arrow
+                pop.sourceView = top.view
+                pop.sourceRect = CGRect(x: top.view.bounds.midX, y: top.view.bounds.midY, width: 0, height: 0)
+                pop.permittedArrowDirections = []
+            }
+        }
+        top.present(avc, animated: true)
+    }
+}
+
+/// Invisible UIView placed behind a menu label so `ShareAnchor` has a real popover source.
+struct ShareAnchorView: UIViewRepresentable {
+    let anchor: ShareAnchor
+    func makeUIView(context: Context) -> UIView {
+        let v = UIView()
+        v.isUserInteractionEnabled = false
+        v.backgroundColor = .clear
+        anchor.view = v
+        return v
+    }
+    func updateUIView(_ uiView: UIView, context: Context) { anchor.view = uiView }
+}
+
+/// A `Menu` whose content gets a `ShareAnchor` bound to the menu's own label.
+struct AnchoredMenu<Content: View, Lbl: View>: View {
+    @State private var anchor = ShareAnchor()
+    @ViewBuilder var content: (ShareAnchor) -> Content
+    @ViewBuilder var label: () -> Lbl
+    var body: some View {
+        Menu { content(anchor) } label: { label() }
+            .background(ShareAnchorView(anchor: anchor))
+    }
+}
+
+/// The shared URL, with the thread subject / "Comment — Author" as the link-preview title.
+final class ShareLinkItem: NSObject, UIActivityItemSource {
+    let url: URL, title: String
+    init(url: URL, title: String) { self.url = url; self.title = title }
+    func activityViewControllerPlaceholderItem(_ c: UIActivityViewController) -> Any { url }
+    func activityViewController(_ c: UIActivityViewController, itemForActivityType t: UIActivity.ActivityType?) -> Any? { url }
+    func activityViewController(_ c: UIActivityViewController, subjectForActivityType t: UIActivity.ActivityType?) -> String { title }
+    func activityViewControllerLinkMetadata(_ c: UIActivityViewController) -> LPLinkMetadata? {
+        let md = LPLinkMetadata()
+        md.originalURL = url
+        md.url = url
+        md.title = title
+        if let img = UIImage(named: "DcampMark") { md.iconProvider = NSItemProvider(object: img) }
+        return md
     }
 }
