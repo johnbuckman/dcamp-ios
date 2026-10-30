@@ -62,6 +62,7 @@ final class ComposerModel {
     var contentLength = 0
     var contentHeight: CGFloat = 0     // editor content height reported by the WebView (auto-grow)
     var ready = false
+    var editorFocused = false      // editor has the caret (JS focus event) — drives keyboard scrolling
     var mentionQuery: String?      // non-nil while typing "@query"
     var submitRequested = 0        // bumped by ⌘↵ in the editor; observed by the host
     var draftKey: String?          // e.g. "thread:123" — enables per-context draft persistence
@@ -185,7 +186,6 @@ struct InlineComposer: View {
                 .background(Color.dcPanel)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.dcLineStrong, lineWidth: 1))
-                .overlay(alignment: .top) { MentionOverlay(model: model).padding(.top, 52).padding(.horizontal, 8) }
             HStack {
                 // Colour + horizontal-rule controls now live in the Trix toolbar
                 // (editor.html buildToolbar), matching the web composer.
@@ -196,6 +196,9 @@ struct InlineComposer: View {
                 .opacity(sending ? 0.5 : 1)
             }
         }
+        // Over the whole composer, not just the editor: as a child of the editor the
+        // Send row was drawn on top of the list and cut the last suggestion off.
+        .overlay(alignment: .top) { MentionOverlay(model: model).padding(.top, 52).padding(.horizontal, 8) }
         .padding(.horizontal, 12).padding(.vertical, 10)
         .background(Color.dcBg)
         .onChange(of: model.submitRequested) { _, _ in send() }   // ⌘↵ from the editor
@@ -237,31 +240,43 @@ struct MentionOverlay: View {
     let model: ComposerModel
     @State private var results: [Person] = []
     @State private var task: Task<Void, Never>?
+    @State private var listHeight: CGFloat = 0
     private let api = DcampAPI.shared
+    private let maxListHeight: CGFloat = 200        // ~4 rows; the rest scrolls
 
     var body: some View {
         Group {
             if model.mentionQuery != nil && !results.isEmpty {
-                VStack(spacing: 0) {
-                    ForEach(results.prefix(6)) { p in
-                        Button { model.insertMention(id: p.id, name: p.name) } label: {
-                            HStack(spacing: 8) {
-                                Avatar(person: p, size: 24)
-                                Text(p.name).foregroundStyle(Color.dcInk)
-                                Spacer()
-                                MachineBadge(person: p)
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(results.prefix(6)) { p in
+                            Button { model.insertMention(id: p.id, name: p.name) } label: {
+                                HStack(spacing: 8) {
+                                    Avatar(person: p, size: 24)
+                                    Text(p.name).foregroundStyle(Color.dcInk)
+                                    Spacer()
+                                    MachineBadge(person: p)
+                                }
+                                .padding(.horizontal, 10).padding(.vertical, 7)
+                                .contentShape(Rectangle())
                             }
-                            .padding(.horizontal, 10).padding(.vertical, 7)
-                            .contentShape(Rectangle())
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("mentionSuggestion")
+                            Divider()
                         }
-                        .buttonStyle(.plain)
-                        Divider()
                     }
+                    .background(GeometryReader { g in Color.clear.preference(key: MentionListHeight.self, value: g.size.height) })
                 }
+                // Sized to its rows but capped (and bounce always on) so the list owns
+                // vertical drags — as a bare VStack a swipe on it scrolled the page behind.
+                .frame(height: min(max(listHeight, 1), maxListHeight))
+                .scrollBounceBehavior(.always)
                 .background(Color.dcPanel)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.dcLineStrong, lineWidth: 1))
                 .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
+                .accessibilityIdentifier("mentionList")
+                .onPreferenceChange(MentionListHeight.self) { listHeight = $0 }
             }
         }
         .onChange(of: model.mentionQuery) { _, q in search(q) }
@@ -273,9 +288,16 @@ struct MentionOverlay: View {
         task = Task {
             try? await Task.sleep(nanoseconds: 200_000_000)
             if Task.isCancelled { return }
-            results = (try? await api.mentionSearch(q)) ?? []
+            // The server can list the same person more than once (seen: 3× "John Buckman").
+            var seen = Set<Int>()
+            results = ((try? await api.mentionSearch(q)) ?? []).filter { seen.insert($0.id).inserted }
         }
     }
+}
+
+private struct MentionListHeight: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
 struct ComposerWebView: UIViewRepresentable {
@@ -347,7 +369,9 @@ struct ComposerWebView: UIViewRepresentable {
             case "ready":
                 model.ready = true
             case "focus":
-                keyMonitor.setEditorFocused(body["on"] as? Bool ?? false)
+                let focused = body["on"] as? Bool ?? false
+                keyMonitor.setEditorFocused(focused)
+                model.editorFocused = focused
             case "change":
                 model.html = body["html"] as? String ?? ""
                 model.contentLength = body["length"] as? Int ?? 0
