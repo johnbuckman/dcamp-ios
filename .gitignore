@@ -20,4 +20,6 @@ secrets/
 Pods/
 .build/
 build-sim/
+build-phone/
+build-device/
 build/
