@@ -307,5 +307,6 @@ enum UIStringCatalog {
         "{n} comment",
         "{n} comments",
         "“Experts only” narrows people to recognised experts.",
+        "No new messages",
     ]
 }
