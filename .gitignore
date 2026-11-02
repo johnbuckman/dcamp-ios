@@ -15,6 +15,7 @@ secrets/
 
 # macOS
 .DS_Store
+__pycache__/
 
 # CocoaPods / SPM (not used yet, but ignore if added)
 Pods/

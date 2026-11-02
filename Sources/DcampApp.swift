@@ -19,5 +19,13 @@ struct DcampApp: App {
                 .environment(forumFilter)
                 .task { await session.start() }
         }
+        #if targetEnvironment(macCatalyst)
+        .commands {
+            CommandGroup(after: .appInfo) {
+                Button(T("Check for Updates…")) { MacUpdater.shared.checkForUpdates() }
+                    .disabled(!MacUpdater.shared.canCheckForUpdates)
+            }
+        }
+        #endif
     }
 }

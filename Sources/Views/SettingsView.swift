@@ -47,6 +47,9 @@ struct SettingsView: View {
                 if session.isAdmin { serverSection }
                 profileSection
                 appearanceSection
+                #if targetEnvironment(macCatalyst)
+                MacUpdateSettingsSection()
+                #endif
                 languageSection
                 locationSection
                 notifSection

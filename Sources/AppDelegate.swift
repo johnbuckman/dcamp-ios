@@ -12,6 +12,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
 
+        #if targetEnvironment(macCatalyst)
+        MacUpdater.shared.start()
+        #endif
+
         // If launched from a notification, stash the route so the web view can apply it.
         if let payload = launchOptions?[.remoteNotification] as? [AnyHashable: Any],
            let route = PushManager.route(from: payload) {
