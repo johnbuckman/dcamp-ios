@@ -84,10 +84,58 @@
   }
   window.addEventListener("resize", fitEditor);
   editorEl.addEventListener("trix-initialize", function () { post({ type: "ready" }); buildToolbar(); fitEditor(); post({ type: "change", html: input.value, length: 0, height: contentHeight() }); });
+  // Report editor focus so the Catalyst key monitor knows when to intercept
+  // delete-word/line keys (and stops when focus leaves the editor).
+  editorEl.addEventListener("focus", function () { post({ type: "focus", on: true }); });
+  editorEl.addEventListener("blur", function () { post({ type: "focus", on: false }); });
 
   // ⌘↵ / Ctrl+↵ submits (matches the web's bindCmdEnter).
+  // Delete word/line (⌥⌫ ⌘⌫ ⌥⌦ ⌘⌦) are handled HERE, in Trix, because letting the
+  // native keyboard manager run edit commands on the WKWebView deadlocks the main
+  // thread on Mac Catalyst (UIKeyboardTaskQueue beachball — dcamp diag 2026-08-28).
+  function dcDeleteTo(boundary, dir) {
+    var ed = editorEl.editor;
+    if (!ed) return;
+    var r = ed.getSelectedRange(); if (!r) return;
+    var start = r[0], end = r[1];
+    if (start === end) {
+      var text = ed.getDocument().toString();
+      if (dir === "backward") {
+        var i = start;
+        if (boundary === "word") {
+          while (i > 0 && /\s/.test(text[i - 1])) i--;      // trailing whitespace
+          while (i > 0 && !/\s/.test(text[i - 1])) i--;      // the word
+        } else {
+          while (i > 0 && text[i - 1] !== "\n") i--;        // to start of line
+        }
+        start = i;
+      } else {
+        var j = end;
+        if (boundary === "word") {
+          while (j < text.length && !/\s/.test(text[j])) j++;
+          while (j < text.length && /\s/.test(text[j])) j++;
+        } else {
+          while (j < text.length && text[j] !== "\n") j++;  // to end of line
+        }
+        end = j;
+      }
+    }
+    mdBusy = true;                                             // don't race the markdown formatter
+    try { ed.setSelectedRange([start, end]); ed.deleteInDirection(dir); }
+    finally { mdBusy = false; }
+  }
+  // Swift calls this from the Catalyst key monitor when it swallows ⌥⌫/⌘⌫/⌥⌦/⌘⌦
+  // (the native keyboard manager would deadlock the main thread on those — see
+  // ComposerKeyMonitor in ComposerWebView.swift).
+  window.dcampDeleteTo = dcDeleteTo;
   editorEl.addEventListener("keydown", function (e) {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); post({ type: "submit" }); }
+    // Also intercept here directly (belt & suspenders — some platforms deliver
+    // the keydown to JS before the native manager; Catalyst does not).
+    if ((e.altKey || e.ctrlKey || e.metaKey) && (e.key === "Backspace" || e.key === "Delete")) {
+      e.preventDefault();
+      dcDeleteTo((e.altKey || e.ctrlKey) ? "word" : "line", e.key === "Backspace" ? "backward" : "forward");
+    }
   });
 
   function esc(s) {
