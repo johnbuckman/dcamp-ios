@@ -1,0 +1,78 @@
+packages:
+  Sparkle:
+    # Keep MacUpdaterPlugin/Sparkle-LICENSE.txt in sync with the binary artifact.
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.10.1
+
+targets:
+  Dcamp:
+    settings:
+      base:
+        DCAMP_SPARKLE_PUBLIC_KEY: ""
+    postBuildScripts:
+      - name: Validate Mac updater release configuration
+        script: |
+          if [ "$EFFECTIVE_PLATFORM_NAME" = "-maccatalyst" ] && [ "$CONFIGURATION" = "Release" ]; then
+            /usr/bin/python3 "$SRCROOT/tools/validate_mac_update.py" "$TARGET_BUILD_DIR/$INFOPLIST_PATH"
+          fi
+        inputFiles:
+          - "$(SRCROOT)/tools/validate_mac_update.py"
+          - "$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)"
+        basedOnDependencyAnalysis: false
+    sources:
+      - path: UpdaterShared
+    dependencies:
+      - target: DcampUpdater
+        platformFilter: macOS
+        link: false
+        embed: true
+        codeSign: true
+        copy:
+          destination: plugins
+
+  DcampUpdater:
+    type: bundle
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: MacUpdaterPlugin
+      - path: UpdaterShared
+    dependencies:
+      - package: Sparkle
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.decentespresso.dcamp.updater
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_NSPrincipalClass: DcampUpdaterPlugin
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @loader_path/../Frameworks"
+        SKIP_INSTALL: YES
+
+  MacUpdaterTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: UpdaterTests
+    dependencies:
+      - target: Dcamp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.decentespresso.dcamp.updater-tests
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/dcamp.app/dcamp"
+        "TEST_HOST[sdk=macosx*]": "$(BUILT_PRODUCTS_DIR)/dcamp.app/Contents/MacOS/dcamp"
+        GENERATE_INFOPLIST_FILE: YES
+        SUPPORTS_MACCATALYST: YES
+        DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: NO
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+schemes:
+  Dcamp:
+    build:
+      targets:
+        Dcamp: all
+  MacUpdaterTests:
+    build:
+      targets:
+        Dcamp: all
+        MacUpdaterTests: [test]
+    test:
+      targets: [MacUpdaterTests]

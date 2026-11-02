@@ -63,6 +63,10 @@ xcodebuild -scheme Dcamp \
 Set `DEVELOPMENT_TEAM` in `project.yml` (or in Xcode → Signing) before building
 for a device or App Store submission.
 
+Mac builds include Sparkle updates from the latest stable GitHub release, checked
+at startup and daily. See [Mac update setup and release steps](MAC_UPDATES.md)
+for the required signing key and `appcast.xml` release asset.
+
 ## JS bridge for the dcamp SPA
 
 When running inside the app, `window.dcampNative` is available and

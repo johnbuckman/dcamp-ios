@@ -240,6 +240,11 @@ bot replies; coffee-cup app icon.
   git mirror) and John deploys them himself via `/admin/recvs`.
 - **Release recipe** (unsigned IPA, users re-sign via SideStep/AltStore; plus a notarized Mac
   zip since v1.22):
+  **Mac updater requirement:** follow `MAC_UPDATES.md`: configure the release owner's
+  Sparkle public key, pass `-xcconfig secrets/Sparkle.xcconfig` to Mac release builds,
+  run `tools/prepare_mac_update.py` after stapling, and upload its signed `appcast.xml`
+  alongside `dcamp-macos-latest.zip` on EVERY stable release. A keyless Mac Release
+  build fails. Do not generate a replacement signing key for an existing installation.
   1. bump `project.yml` versions → `xcodegen generate` → commit + push.
   2. build from a CLEAN checkout of that commit (`git worktree add --detach <dir> <sha>`) —
      another session may have uncommitted edits in this tree:

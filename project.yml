@@ -1,3 +1,6 @@
+include:
+  - project-updater.yml
+
 name: Dcamp
 options:
   bundleIdPrefix: com.decentespresso
