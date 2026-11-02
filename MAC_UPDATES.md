@@ -5,8 +5,8 @@ through an AppKit bundle. iPhone/iPad builds do not embed the bundle or Sparkle.
 Automatic checks default to on: once at process startup, then every 24 hours while
 dcamp is running. Sparkle persists the member's choice in Settings → App updates.
 Disabling automatic checks disables the startup check too. **Check for Updates…**
-in the dcamp menu and Settings still works manually. Installing an update requires
-the member's approval; downloads are not silently installed.
+in the dcamp menu and Settings still works manually. Automatic checks do not opt
+members into unattended installation; Sparkle prompts to install by default.
 
 The app follows the latest **stable** GitHub release. Both the feed and archive
 must be Ed25519 signed. Archives are verified before extraction. Sparkle also
