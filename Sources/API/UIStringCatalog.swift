@@ -6,6 +6,21 @@ import Foundation
 //   grep -rhoE 'T\("([^"\\]|\\.)*"\)' Sources/Views | sed -E 's/^T\("//; s/"\)$//' | sort -u
 enum UIStringCatalog {
     static let all: [String] = [
+        "Bookmark",
+        "Bookmark removed",
+        "Bookmarked",
+        "Bookmarks",
+        "Comment on:",
+        "Couldn't load your bookmarks",
+        "Couldn’t update bookmark",
+        "No bookmarks yet",
+        "Posts and comments you've saved, newest first. Only you can see them.",
+        "Remove bookmark",
+        "See all bookmarks",
+        "Try again",
+        "Use “Bookmark” in the ⋯ menu of any post or comment to save it here.",
+        "saved {d}",
+
         "@mention Derek or DeepSeek in any thread, comment, chat line, or a 1:1 DM.",
         "@mentioned you in:",
         "A clearer subject helps people find and answer your post.",
