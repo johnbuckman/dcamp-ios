@@ -24,7 +24,7 @@ struct SendBar: View {
         HStack(spacing: 10) {
             TextField(placeholder, text: $text, axis: .vertical)
                 .lineLimit(1...5)
-                .font(.system(size: 15))
+                .dcFont(size: 15)
                 .padding(.horizontal, 12).padding(.vertical, 9)
                 .background(Color.dcPanel, in: RoundedRectangle(cornerRadius: 12))
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.dcLineStrong, lineWidth: 1))
@@ -53,7 +53,7 @@ struct LineRow: View {
             Avatar(person: author, size: 36, tappable: true)   // web shows a per-line avatar; native was missing it
             VStack(alignment: .leading, spacing: 5) {
                 AuthorLine(person: author, date: createdAt)
-                TranslatableText(original: html, translated: translated, paragraphSpacing: 4).font(.system(size: 15))
+                TranslatableText(original: html, translated: translated, paragraphSpacing: 4).dcFont(size: 15)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -178,7 +178,7 @@ struct ChatView: View {
         .alert(T("Couldn’t send"), isPresented: Binding(get: { store.sendError != nil }, set: { if !$0 { store.sendError = nil } })) {
             Button(T("OK")) { store.sendError = nil }
         } message: { Text(store.sendError ?? "") }
-        .sheet(item: $editingLine) { line in
+        .dcSheet(item: $editingLine) { line in
             ComposeView(mode: .editChat(line: line)) { _ in Task { await store.reload() } }
         }
         .task { await store.start() }
@@ -239,7 +239,7 @@ struct DMListView: View {
         .background(Color.dcBg)
         .navigationTitle(T("Messages"))
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $composing, onDismiss: {
+        .dcSheet(isPresented: $composing, onDismiss: {
             if let c = pendingConvo { pendingConvo = nil; open(c) }
         }) {
             NewDMView { convoID in pendingConvo = convoID }
@@ -251,7 +251,7 @@ struct DMListView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
-                    Text(T("Direct Messages")).font(.system(size: 22, weight: .heavy)).foregroundStyle(Color.dcInk)
+                    Text(T("Direct Messages")).dcFont(size: 22, weight: .heavy).foregroundStyle(Color.dcInk)
                     Spacer()
                     Button { composing = true } label: { Image(systemName: "square.and.pencil") }
                         .buttonStyle(.plain).foregroundStyle(Color.dcAccent)
@@ -302,12 +302,12 @@ struct DMListView: View {
     /// Filter box: type a name to show only conversations that person is in.
     private var filterField: some View {
         HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass").foregroundStyle(Color.dcMuted).font(.system(size: 14))
+            Image(systemName: "magnifyingglass").foregroundStyle(Color.dcMuted).dcFont(size: 14)
             TextField(T("Filter by name"), text: $query)
                 .textFieldStyle(.plain)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
-                .font(.system(size: 15))
+                .dcFont(size: 15)
             if !query.isEmpty {
                 Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Color.dcMuted) }
                     .buttonStyle(.plain)
@@ -359,14 +359,14 @@ struct DMConversationRow: View {
         HStack(spacing: 12) {
             Avatar(person: convo.lead, size: 44)
             VStack(alignment: .leading, spacing: 2) {
-                Text(convo.title).font(.system(size: 16, weight: .bold)).foregroundStyle(Color.dcInk).lineLimit(1)
-                Text(PlainText.strip(convo.last ?? "")).font(.system(size: 14)).foregroundStyle(Color.dcInkSoft).lineLimit(1)
+                Text(convo.title).dcFont(size: 16, weight: .bold).foregroundStyle(Color.dcInk).lineLimit(1)
+                Text(PlainText.strip(convo.last ?? "")).dcFont(size: 14).foregroundStyle(Color.dcInkSoft).lineLimit(1)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 4) {
-                Text(RelativeTime.string(convo.lastAt)).font(.system(size: 12)).foregroundStyle(Color.dcMuted)
+                Text(RelativeTime.string(convo.lastAt)).dcFont(size: 12).foregroundStyle(Color.dcMuted)
                 if convo.unreadCount > 0 {
-                    Text("\(convo.unreadCount)").font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                    Text("\(convo.unreadCount)").dcFont(size: 12, weight: .bold).foregroundStyle(.white)
                         .padding(.horizontal, 6).padding(.vertical, 2)
                         .background(Color.dcAccent, in: Capsule())
                 }
@@ -458,7 +458,7 @@ struct DMThreadView: View {
                 } label: { Image(systemName: "person.2") }
             }
         }
-        .sheet(isPresented: $showInvite) {
+        .dcSheet(isPresented: $showInvite) {
             PeopleSearchSheet(title: T("Invite")) { r in
                 await api.dmInvite(convoID: convoID, participantIDs: [r.id], days: 30)
                 await store.reload()
@@ -499,14 +499,14 @@ struct DMBubble: View {
     private var bubble: some View {
         VStack(alignment: .leading, spacing: 3) {
             if showSender, !message.isMine, let name = message.sender?.name, !name.isEmpty {
-                Text(name).font(.system(size: 11, weight: .bold)).foregroundStyle(senderTint)
+                Text(name).dcFont(size: 11, weight: .bold).foregroundStyle(senderTint)
             }
             TranslatableText(original: message.html, translated: message.bodyTr, paragraphSpacing: 6)
-                .font(.system(size: 15))
+                .dcFont(size: 15)
                 .foregroundStyle(message.isMine ? Color.white : Color.dcInk)
                 .environment(\.dcLinkOverride, message.isMine ? Color.white : nil)   // blue links vanish on the blue bubble
             Text(RelativeTime.string(message.createdAt))
-                .font(.system(size: 11))
+                .dcFont(size: 11)
                 .foregroundStyle(message.isMine ? Color.white.opacity(0.75) : Color.dcMuted)
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
@@ -587,8 +587,8 @@ struct NewDMView: View {
                         HStack(spacing: 6) {
                             ForEach(selected) { r in
                                 HStack(spacing: 4) {
-                                    Text(r.name).font(.system(size: 13, weight: .semibold))
-                                    Image(systemName: "xmark.circle.fill").font(.system(size: 12))
+                                    Text(r.name).dcFont(size: 13, weight: .semibold)
+                                    Image(systemName: "xmark.circle.fill").dcFont(size: 12)
                                 }
                                 .foregroundStyle(Color.dcAccentInk)
                                 .padding(.horizontal, 9).padding(.vertical, 5)

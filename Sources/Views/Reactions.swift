@@ -22,11 +22,11 @@ struct BoostBar: View {
                         // Text notes (server caps them at 40 chars) are 12pt bold like the
                         // web's `.boost.text`; one line, tail-truncated if wider than the cap.
                         Text(b.display)
-                            .font(b.isText ? .system(size: 12, weight: .bold) : .system(size: 14))
+                            .dcFont(size: b.isText ? 12 : 14, weight: b.isText ? .bold : .regular)
                             .lineLimit(1).truncationMode(.tail)
                             .frame(maxWidth: 220)
                         // Web always renders the count (<span class="n">) — show it even at 1.
-                        Text("\(b.count)").font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.dcInkSoft)
+                        Text("\(b.count)").dcFont(size: 12, weight: .semibold).foregroundStyle(Color.dcInkSoft)
                     }
                     .padding(.horizontal, 8).padding(.vertical, 3)
                     .background(b.content == boosts.mine ? Color.dcAccent.opacity(0.15) : Color.dcPanel, in: Capsule())
@@ -35,7 +35,7 @@ struct BoostBar: View {
                 .buttonStyle(.plain)
             }
             Button { picking = true } label: {
-                Image(systemName: "face.smiling").font(.system(size: 13))
+                Image(systemName: "face.smiling").dcFont(size: 13)
                     .foregroundStyle(Color.dcMuted)
                     .padding(5)
                     .background(Color.dcPanel, in: Circle())
@@ -65,7 +65,9 @@ struct BoostBar: View {
         }
 
         private var picker: some View {
-            EmojiPicker(onPick: onPick).presentationCompactAdaptation(.popover)
+            EmojiPicker(onPick: onPick)
+                .modifier(DCTextSizePreference())
+                .presentationCompactAdaptation(.popover)
         }
     }
 
@@ -114,8 +116,8 @@ struct EmojiPicker: View {
     var body: some View {
         VStack(spacing: 8) {
             HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass").font(.system(size: 13)).foregroundStyle(Color.dcMuted)
-                TextField(T("Search emoji"), text: $query).textFieldStyle(.plain).font(.system(size: 15))
+                Image(systemName: "magnifyingglass").dcFont(size: 13).foregroundStyle(Color.dcMuted)
+                TextField(T("Search emoji"), text: $query).textFieldStyle(.plain).dcFont(size: 15)
             }
             .padding(.horizontal, 10).padding(.vertical, 7)
             .background(Color.dcPanel, in: RoundedRectangle(cornerRadius: 8))
@@ -125,7 +127,7 @@ struct EmojiPicker: View {
                     VStack(alignment: .leading, spacing: 12) {
                         ForEach(Self.categories, id: \.0) { name, items in
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(name.uppercased()).font(.system(size: 11, weight: .bold)).foregroundStyle(Color.dcMuted)
+                                Text(name.uppercased()).dcFont(size: 11, weight: .bold).foregroundStyle(Color.dcMuted)
                                 LazyVGrid(columns: cols, spacing: 6) {
                                     ForEach(items, id: \.0) { e, _ in emojiButton(e) }
                                 }

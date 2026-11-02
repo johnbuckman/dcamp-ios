@@ -47,6 +47,7 @@ struct SettingsView: View {
                 if session.isAdmin { serverSection }
                 profileSection
                 appearanceSection
+                TextSizeSettingsSection()
                 languageSection
                 locationSection
                 notifSection
@@ -68,8 +69,11 @@ struct SettingsView: View {
             .alert(T("Couldn’t update your photo"), isPresented: Binding(get: { avatarError != nil }, set: { if !$0 { avatarError = nil } })) {
                 Button(T("OK")) { avatarError = nil }
             } message: { Text(avatarError ?? "") }
-            .sheet(isPresented: $showHelp) { HelpView() }
+            .dcSheet(isPresented: $showHelp) { HelpView() }
         }
+        // Full-screen presentations capture their parent's environment. Observe
+        // the preference here too so the open form and preview update in place.
+        .modifier(DCTextSizePreference())
     }
 
     // Admin-only: point the app at the Live (decentespresso.com) or Test
@@ -278,6 +282,9 @@ struct SettingsView: View {
     }
 
     private func load() async {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["DCAMP_SHOT_SCREEN"] == "textsize" { return }
+        #endif
         guard !loaded else { return }
         name = session.me?.name ?? ""
         about = session.me?.about ?? ""
@@ -291,5 +298,50 @@ struct SettingsView: View {
         summarySources = sp.sources ?? ""
         muted = await api.personMutes()
         loaded = true
+    }
+}
+
+/// The preference is saved on this device and applies immediately to the whole app.
+struct TextSizeSettingsSection: View {
+    @AppStorage("dcamp_text_size") private var preferenceRaw = TextSizePreference.system.rawValue
+
+    var body: some View {
+        #if targetEnvironment(macCatalyst)
+        // Dynamic Type overrides do not resize Catalyst text. Do not offer a
+        // control that saves a choice without changing the displayed text.
+        EmptyView()
+        #else
+        Section {
+            Picker(T("Text size"), selection: $preferenceRaw) {
+                ForEach(TextSizePreference.allCases) { size in
+                    Text(label(size)).tag(size.rawValue)
+                }
+            }
+            .accessibilityIdentifier("text-size-picker")
+            VStack(alignment: .leading, spacing: 6) {
+                Text(T("Preview")).font(.caption).foregroundStyle(Color.dcMuted)
+                Text(T("This is how messages will look."))
+                    .dcFont(size: 16).foregroundStyle(Color.dcInk)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("text-size-preview")
+            }
+            .padding(.vertical, 4)
+        } header: {
+            Text(T("Text size"))
+        } footer: {
+            Text(T("Follow iOS uses your system Text Size setting. A custom size applies only to this app on this device."))
+        }
+        #endif
+    }
+
+    private func label(_ size: TextSizePreference) -> String {
+        switch size {
+        case .system: return T("Follow iOS")
+        case .small: return T("Small")
+        case .standard: return T("Standard")
+        case .large: return T("Large")
+        case .extraLarge: return T("Extra large")
+        case .extraExtraLarge: return T("Extra extra large")
+        }
     }
 }

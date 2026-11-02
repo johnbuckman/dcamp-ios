@@ -120,6 +120,7 @@ struct ActivityRow: View {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     if !item.isRead { Circle().fill(Color.red).frame(width: 7, height: 7) }
                     Text(PlainText.strip(title)).font(.subheadline.weight(.semibold)).lineLimit(2)
+                        .accessibilityIdentifier("notification-title-\(item.id)")
                     if item.moreCount > 0 {
                         Text("+\(item.moreCount) " + T("more"))
                             .font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
@@ -129,9 +130,11 @@ struct ActivityRow: View {
                 }
                 if let p = item.preview, !p.isEmpty {
                     Text(PlainText.strip(p)).font(.footnote).foregroundStyle(.secondary).lineLimit(2)
+                        .accessibilityIdentifier("notification-preview-\(item.id)")
                 }
                 Text(RelativeTime.string(item.createdAt) + ((item.actor?.name).map { " · " + $0 } ?? ""))
                     .font(.caption2).foregroundStyle(.tertiary)
+                    .accessibilityIdentifier("notification-meta-\(item.id)")
             }
             Spacer(minLength: 0)
         }
@@ -200,7 +203,7 @@ struct NotificationsBell: View {
                     .symbolRenderingMode(count > 0 ? .multicolor : .monochrome)
                 if count > 0 {
                     Text(count > 99 ? "99+" : "\(count)")
-                        .font(.system(size: 10, weight: .bold))
+                        .dcFont(size: 10, weight: .bold)
                         .foregroundStyle(.white)
                         .padding(.horizontal, 4).padding(.vertical, 1)
                         .background(Color.red, in: Capsule())
@@ -209,5 +212,6 @@ struct NotificationsBell: View {
             }
         }
         .accessibilityLabel(count > 0 ? T("Notifications, {n} unread").replacingOccurrences(of: "{n}", with: "\(count)") : T("Notifications"))
+        .accessibilityIdentifier("open-notifications")
     }
 }

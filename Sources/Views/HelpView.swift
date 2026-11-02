@@ -13,12 +13,12 @@ struct HelpView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack(spacing: 8) {
                                 Image(systemName: s.icon).foregroundStyle(Color.dcAccent)
-                                Text(s.title).font(.system(size: 19, weight: .heavy)).foregroundStyle(Color.dcInk)
+                                Text(s.title).dcFont(size: 19, weight: .heavy).foregroundStyle(Color.dcInk)
                             }
                             ForEach(Array(s.points.enumerated()), id: \.offset) { _, p in
                                 HStack(alignment: .top, spacing: 8) {
                                     Text("•").foregroundStyle(Color.dcMuted)
-                                    Text(p).font(.system(size: 15)).foregroundStyle(Color.dcInkSoft)
+                                    Text(p).dcFont(size: 15).foregroundStyle(Color.dcInkSoft)
                                         .fixedSize(horizontal: false, vertical: true)
                                 }
                             }

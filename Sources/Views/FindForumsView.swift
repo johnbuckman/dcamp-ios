@@ -13,7 +13,7 @@ struct FindForumsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Text(T("Find forums")).font(.system(size: 28, weight: .heavy)).foregroundStyle(Color.dcInk)
+                Text(T("Find forums")).dcFont(size: 28, weight: .heavy).foregroundStyle(Color.dcInk)
                 if session.showRegions { section(T("Regional forums"), regions, kind: "region") }
                 if session.showRoasters { section(T("Roaster forums"), roasters, kind: "roaster") }
                 if !loading && regions.isEmpty && roasters.isEmpty {
@@ -37,14 +37,14 @@ struct FindForumsView: View {
                 ForEach(boards) { b in
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(b.name).font(.system(size: 16, weight: .semibold)).foregroundStyle(Color.dcInk)
+                            Text(b.name).dcFont(size: 16, weight: .semibold).foregroundStyle(Color.dcInk)
                             if let d = b.description, !d.isEmpty {
                                 Text(d).font(.footnote).foregroundStyle(Color.dcInkSoft).lineLimit(1)
                             }
                         }
                         Spacer()
                         Button(b.isJoined ? T("Leave") : T("Join")) { toggle(b, kind: kind) }
-                            .font(.system(size: 14, weight: .semibold))
+                            .dcFont(size: 14, weight: .semibold)
                             .foregroundStyle(b.isJoined ? Color.dcMuted : Color.dcAccentInk)
                     }
                     .padding(12)

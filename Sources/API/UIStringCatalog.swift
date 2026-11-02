@@ -307,5 +307,14 @@ enum UIStringCatalog {
         "{n} comment",
         "{n} comments",
         "“Experts only” narrows people to recognised experts.",
+        "Extra extra large",
+        "Extra large",
+        "Follow iOS uses your system Text Size setting. A custom size applies only to this app on this device.",
+        "Follow iOS",
+        "Large",
+        "Small",
+        "Standard",
+        "Text size",
+        "This is how messages will look.",
     ]
 }

@@ -87,13 +87,13 @@ struct ComposeView: View {
             .alert(T("Couldn’t post"), isPresented: .constant(error != nil)) {
                 Button(T("OK")) { error = nil }
             } message: { Text(error ?? "") }
-            .sheet(isPresented: $showSubjectSheet) {
+            .dcSheet(isPresented: $showSubjectSheet) {
                 SubjectSuggestionSheet(current: subject, suggested: suggestedSubject) { useSuggested in
                     if useSuggested { subject = suggestedSubject }
                     showSubjectSheet = false; precheckPassed = true; doPost()
                 }
             }
-            .sheet(isPresented: $showDerekSheet) {
+            .dcSheet(isPresented: $showDerekSheet) {
                 PreAnswerSheet(html: derekHTML, onRoute: nil) { postAnyway in
                     showDerekSheet = false
                     if postAnyway { precheckPassed = true; doPost() }
@@ -266,14 +266,14 @@ struct SubjectSuggestionSheet: View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 16) {
                 Text(T("A clearer subject helps people find and answer your post."))
-                    .font(.system(size: 15)).foregroundStyle(Color.dcInkSoft)
+                    .dcFont(size: 15).foregroundStyle(Color.dcInkSoft)
                 VStack(alignment: .leading, spacing: 6) {
                     Text(T("YOUR SUBJECT")).font(.caption).foregroundStyle(Color.dcMuted)
-                    Text(current).font(.system(size: 16, weight: .semibold)).foregroundStyle(Color.dcInk)
+                    Text(current).dcFont(size: 16, weight: .semibold).foregroundStyle(Color.dcInk)
                 }
                 VStack(alignment: .leading, spacing: 6) {
                     Text(T("SUGGESTED")).font(.caption).foregroundStyle(Color.dcAccentInk)
-                    Text(suggested).font(.system(size: 16, weight: .semibold)).foregroundStyle(Color.dcInk)
+                    Text(suggested).dcFont(size: 16, weight: .semibold).foregroundStyle(Color.dcInk)
                 }
                 Spacer()
                 Button(T("Use suggested subject")) { onDecision(true) }
@@ -300,9 +300,9 @@ struct PreAnswerSheet: View {
                     HStack(spacing: 8) {
                         Image(systemName: "sparkles").foregroundStyle(Color.dcAccent)
                         Text(T("Derek may already have an answer"))
-                            .font(.system(size: 17, weight: .bold)).foregroundStyle(Color.dcInk)
+                            .dcFont(size: 17, weight: .bold).foregroundStyle(Color.dcInk)
                     }
-                    TrixContentView(html: html, onRoute: onRoute, paragraphSpacing: 8).font(.system(size: 15))
+                    TrixContentView(html: html, onRoute: onRoute, paragraphSpacing: 8).dcFont(size: 15)
                 }.padding(20)
             }
             .safeAreaInset(edge: .bottom) {

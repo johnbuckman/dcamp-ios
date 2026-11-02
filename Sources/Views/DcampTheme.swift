@@ -48,6 +48,47 @@ enum ThemeMode: String, CaseIterable, Identifiable {
     }
 }
 
+/// A device-local override. System keeps following the user's iOS Text Size,
+/// including the per-app Control Center setting.
+enum TextSizePreference: String, CaseIterable, Identifiable {
+    case system, small, standard, large, extraLarge, extraExtraLarge
+    var id: String { rawValue }
+
+    var dynamicTypeSize: DynamicTypeSize? {
+        switch self {
+        case .system: return nil
+        case .small: return .small
+        case .standard: return .large
+        case .large: return .xLarge
+        case .extraLarge: return .xxxLarge
+        case .extraExtraLarge: return .accessibility1
+        }
+    }
+}
+
+struct DCTextSizePreference: ViewModifier {
+    // Read the actual iOS setting, rather than a parent environment that may
+    // already contain our override (or a presentation-time snapshot of it).
+    @State private var systemSize = DynamicTypeSize(UIApplication.shared.preferredContentSizeCategory) ?? .large
+    @AppStorage private var preferenceRaw: String
+
+    init(store: UserDefaults = .standard) {
+        _preferenceRaw = AppStorage(wrappedValue: TextSizePreference.system.rawValue,
+                                    "dcamp_text_size", store: store)
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .dynamicTypeSize(TextSizePreference(rawValue: preferenceRaw)?.dynamicTypeSize ?? systemSize)
+            .onAppear {
+                systemSize = DynamicTypeSize(UIApplication.shared.preferredContentSizeCategory) ?? .large
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIContentSizeCategory.didChangeNotification)) { _ in
+                systemSize = DynamicTypeSize(UIApplication.shared.preferredContentSizeCategory) ?? .large
+            }
+    }
+}
+
 enum DC {
     static let radius: CGFloat = 14
     // The web's central column (dcamp.css `--maxw`): content is fluid up to this and
@@ -58,6 +99,36 @@ enum DC {
 // MARK: - Card
 
 extension View {
+    /// Every presentation gets its own preference observer: UIKit may preserve
+    /// a sheet's environment independently from the screen that presents it.
+    func dcSheet<Content: View>(isPresented: Binding<Bool>, onDismiss: (() -> Void)? = nil,
+                               @ViewBuilder content: @escaping () -> Content) -> some View {
+        sheet(isPresented: isPresented, onDismiss: onDismiss) {
+            content().modifier(DCTextSizePreference())
+        }
+    }
+
+    func dcSheet<Item: Identifiable, Content: View>(item: Binding<Item?>, onDismiss: (() -> Void)? = nil,
+                                                   @ViewBuilder content: @escaping (Item) -> Content) -> some View {
+        sheet(item: item, onDismiss: onDismiss) { item in
+            content(item).modifier(DCTextSizePreference())
+        }
+    }
+
+    func dcFullScreenCover<Content: View>(isPresented: Binding<Bool>, onDismiss: (() -> Void)? = nil,
+                                         @ViewBuilder content: @escaping () -> Content) -> some View {
+        fullScreenCover(isPresented: isPresented, onDismiss: onDismiss) {
+            content().modifier(DCTextSizePreference())
+        }
+    }
+
+    /// Preserve the web-inspired point sizes at the default setting while following
+    /// Dynamic Type, including app-specific changes from Control Center's Text Size.
+    func dcFont(size: CGFloat, weight: Font.Weight = .regular,
+                relativeTo textStyle: Font.TextStyle = .body) -> some View {
+        modifier(DCScaledFont(size: size, weight: weight, relativeTo: textStyle))
+    }
+
     /// White rounded panel with dcamp's warm border + soft shadow.
     func dcCard(padding: CGFloat = 18) -> some View {
         self
@@ -74,6 +145,20 @@ extension View {
     }
 }
 
+private struct DCScaledFont: ViewModifier {
+    @ScaledMetric private var size: CGFloat
+    let weight: Font.Weight
+
+    init(size: CGFloat, weight: Font.Weight, relativeTo textStyle: Font.TextStyle) {
+        _size = ScaledMetric(wrappedValue: size, relativeTo: textStyle)
+        self.weight = weight
+    }
+
+    func body(content: Content) -> some View {
+        content.font(.system(size: size, weight: weight))
+    }
+}
+
 // MARK: - Badges
 
 /// Green outlined pill: machine + "since YEAR" (dcamp's .owner-badge).
@@ -82,12 +167,13 @@ struct MachineBadge: View {
     var body: some View {
         if let p = person, let m = p.machine, !m.isEmpty {
             HStack(spacing: 3) {
-                Image(systemName: "cup.and.saucer.fill").font(.system(size: 8))
-                Text(p.since.map { "\(m) since \($0)" } ?? m).lineLimit(1)
+                Image(systemName: "cup.and.saucer.fill").dcFont(size: 8)
+                Text(p.since.map { "\(m) since \($0)" } ?? m)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .font(.system(size: 11, weight: .bold))
+            .dcFont(size: 11, weight: .bold)
             .foregroundStyle(Color.dcAccentInk)
-            .fixedSize()
+            .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 7).padding(.vertical, 1)
             .background(Color.dcPanel, in: Capsule())
             .overlay(Capsule().stroke(Color.dcLineStrong, lineWidth: 1))
@@ -101,11 +187,19 @@ struct FlowLayout: Layout {
     var hSpacing: CGFloat = 8
     var vSpacing: CGFloat = 6
 
+    private func size(of subview: LayoutSubview, fitting maxWidth: CGFloat) -> CGSize {
+        let ideal = subview.sizeThatFits(.unspecified)
+        // Keep compact items at their natural width, but let oversized text wrap
+        // within the column instead of drawing outside the layout's bounds.
+        guard ideal.width > maxWidth else { return ideal }
+        return subview.sizeThatFits(ProposedViewSize(width: maxWidth, height: nil))
+    }
+
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let maxW = proposal.width ?? .infinity
         var x: CGFloat = 0, y: CGFloat = 0, lineH: CGFloat = 0, maxLineW: CGFloat = 0
         for v in subviews {
-            let s = v.sizeThatFits(.unspecified)
+            let s = size(of: v, fitting: maxW)
             if x > 0 && x + s.width > maxW { maxLineW = max(maxLineW, x - hSpacing); x = 0; y += lineH + vSpacing; lineH = 0 }
             x += s.width + hSpacing; lineH = max(lineH, s.height)
         }
@@ -117,7 +211,7 @@ struct FlowLayout: Layout {
         let maxW = bounds.width
         var x: CGFloat = 0, y: CGFloat = 0, lineH: CGFloat = 0
         for v in subviews {
-            let s = v.sizeThatFits(.unspecified)
+            let s = size(of: v, fitting: maxW)
             if x > 0 && x + s.width > maxW { x = 0; y += lineH + vSpacing; lineH = 0 }
             v.place(at: CGPoint(x: bounds.minX + x, y: bounds.minY + y), anchor: .topLeading, proposal: ProposedViewSize(s))
             x += s.width + hSpacing; lineH = max(lineH, s.height)
@@ -131,7 +225,7 @@ struct DecentBadge: View {
     var body: some View {
         if person?.decent == true {
             Text("DECENT")
-                .font(.system(size: 10, weight: .heavy)).tracking(0.6)
+                .dcFont(size: 10, weight: .heavy).tracking(0.6)
                 .foregroundStyle(.white)
                 .padding(.horizontal, 8).padding(.vertical, 1.5)
                 .background(Color.dcDecentBg, in: Capsule())
@@ -152,22 +246,24 @@ struct AuthorLine: View {
     var body: some View {
         FlowLayout(hSpacing: 8, vSpacing: 5) {
             Text(person?.name ?? "")
-                .font(.system(size: 14, weight: .semibold))
+                .dcFont(size: 14, weight: .semibold)
                 .foregroundStyle(Color.dcInkSoft)
-                .fixedSize()
+                .fixedSize(horizontal: false, vertical: true)
                 .onTapGesture { if tappable, let id = person?.id { router.personID = id } }
             DecentBadge(person: person)
             MachineBadge(person: person)
             if let date {
                 Text("· \(RelativeTime.string(date))")
-                    .font(.system(size: 13)).foregroundStyle(Color.dcMuted).fixedSize()
+                    .dcFont(size: 13).foregroundStyle(Color.dcMuted)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             if let n = commentCount, n > 0 {
                 HStack(spacing: 6) {
                     Text("·")
                     Label("\(n)", systemImage: "bubble.right")
                 }
-                .font(.system(size: 13)).foregroundStyle(Color.dcMuted).fixedSize()
+                .dcFont(size: 13).foregroundStyle(Color.dcMuted)
+                .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -180,7 +276,7 @@ struct DCSectionLabel: View {
     let text: String
     var body: some View {
         Text(text.uppercased())
-            .font(.system(size: 12, weight: .bold)).tracking(0.5)
+            .dcFont(size: 12, weight: .bold).tracking(0.5)
             .foregroundStyle(Color.dcMuted)
     }
 }
@@ -189,7 +285,7 @@ struct DCSectionLabel: View {
 struct DCPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 15, weight: .bold))
+            .dcFont(size: 15, weight: .bold)
             .foregroundStyle(.white)
             .padding(.horizontal, 16).padding(.vertical, 10)
             .background(Color.dcAccent.opacity(configuration.isPressed ? 0.85 : 1), in: RoundedRectangle(cornerRadius: 10))
@@ -205,8 +301,8 @@ struct DCFilterPill: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 5) {
-                Image(systemName: icon).font(.system(size: 12))
-                Text(title).font(.system(size: 13, weight: .semibold))
+                Image(systemName: icon).dcFont(size: 12)
+                Text(title).dcFont(size: 13, weight: .semibold)
             }
             .foregroundStyle(active ? Color.dcAccentInk : Color.dcInkSoft)
             .padding(.horizontal, 11).padding(.vertical, 6)

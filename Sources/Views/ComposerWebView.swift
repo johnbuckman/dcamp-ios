@@ -229,6 +229,7 @@ struct MentionOverlay: View {
 
 struct ComposerWebView: UIViewRepresentable {
     let model: ComposerModel
+    @ScaledMetric(relativeTo: .body) private var bodyFontSize: CGFloat = 17
 
     func makeCoordinator() -> Coordinator { Coordinator(model: model) }
 
@@ -245,6 +246,7 @@ struct ComposerWebView: UIViewRepresentable {
         web.scrollView.showsHorizontalScrollIndicator = false
         model.webView = web
         applyTheme(to: web)
+        context.coordinator.updateFontSize(bodyFontSize)
 
         if let url = editorURL() {
             web.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
@@ -252,7 +254,10 @@ struct ComposerWebView: UIViewRepresentable {
         return web
     }
 
-    func updateUIView(_ uiView: WKWebView, context: Context) { applyTheme(to: uiView) }
+    func updateUIView(_ uiView: WKWebView, context: Context) {
+        applyTheme(to: uiView)
+        context.coordinator.updateFontSize(bodyFontSize)
+    }
 
     /// Keep the embedded Trix editor's light/dark appearance in sync with the app's
     /// theme override (its CSS uses `color-scheme`/`canvas`, which follow this).
@@ -272,13 +277,27 @@ struct ComposerWebView: UIViewRepresentable {
     @MainActor
     final class Coordinator: NSObject, WKScriptMessageHandler {
         let model: ComposerModel
+        private var fontSize: CGFloat = 17
         init(model: ComposerModel) { self.model = model }
+
+        func updateFontSize(_ size: CGFloat) {
+            guard fontSize != size else { return }
+            fontSize = size
+            applyFontSize()
+        }
+
+        private func applyFontSize() {
+            // Change presentation in place: reloading the editor would lose the
+            // current draft, selection, and undo history.
+            model.webView?.evaluateJavaScript("window.dcampSetFontSize?.(\(fontSize))")
+        }
 
         func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
             guard let body = message.body as? [String: Any] else { return }
             switch body["type"] as? String {
             case "ready":
                 model.ready = true
+                applyFontSize()
             case "change":
                 model.html = body["html"] as? String ?? ""
                 model.contentLength = body["length"] as? Int ?? 0
