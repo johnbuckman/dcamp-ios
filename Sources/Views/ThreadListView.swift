@@ -45,13 +45,13 @@ struct ThreadListView: View {
         // header (icon + name), so a nav title would duplicate it.
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $composing) {
+        .dcSheet(isPresented: $composing) {
             ComposeView(mode: .newThread(board: board)) { newID in
                 Task { await load(reset: true) }
                 path.append(.thread(newID))
             }
         }
-        .sheet(isPresented: $showFilter) {
+        .dcSheet(isPresented: $showFilter) {
             FilterSheet(onApply: { Task { await load(reset: true) } })
                 .environment(session).environment(forumFilter)
         }
@@ -71,7 +71,8 @@ struct ThreadListView: View {
                     .font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
                     .frame(width: 32, height: 32)
                     .background(ForumStyle.tint(board), in: RoundedRectangle(cornerRadius: 8))
-                Text(T(board.name)).font(.system(size: 26, weight: .heavy)).foregroundStyle(Color.dcInk)
+                Text(T(board.name)).dcFont(size: 26, weight: .heavy).foregroundStyle(Color.dcInk)
+                    .accessibilityIdentifier("forum-title")
             }
             Spacer()
             if session.canPost {
@@ -159,6 +160,14 @@ struct ThreadListView: View {
     }
 
     private func load(reset: Bool) async {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["DCAMP_SHOT_SCREEN"] == "textsize" {
+            rows = [MessageRow(id: -1, subject: "A sample forum thread", author: session.me,
+                               preview: "Sample message preview")]
+            total = 1; fetched = 1; loadedFor = filterKey
+            return
+        }
+        #endif
         if loading { return }
         loading = true; defer { loading = false }
         let offset = reset ? 0 : fetched
@@ -176,6 +185,9 @@ struct ThreadListView: View {
     /// Back from a thread: update the newest page's rows (reply counts, latest reply) in
     /// place, without adding or removing rows, so the scroll position stays put.
     private func refreshInPlace() async {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["DCAMP_SHOT_SCREEN"] == "textsize" { return }
+        #endif
         guard let page: MessagesPage = try? await api.call("messages", pageParams(offset: 0)) else { return }
         let fresh = Dictionary(page.messages.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         for i in rows.indices { if let f = fresh[rows[i].id], f != rows[i] { rows[i] = f } }
@@ -238,11 +250,11 @@ struct ThreadRowView: View {
         // Own line: beside the title, a long label left the title a few letters per line.
         if let cat = row.categoryName, !cat.isEmpty { CategoryPill(name: cat, emoji: row.categoryEmoji) }
         if !row.displayPreview.isEmpty {
-            Text(row.displayPreview).font(.system(size: 15)).foregroundStyle(Color.dcInkSoft).lineLimit(1)
+            Text(row.displayPreview).dcFont(size: 15).foregroundStyle(Color.dcInkSoft).lineLimit(1)
         }
         if let rc = row.recentCommentText, !PlainText.strip(rc).isEmpty {
             Label(PlainText.strip(rc), systemImage: "arrowshape.turn.up.left")
-                .font(.system(size: 13)).foregroundStyle(Color.dcMuted).lineLimit(1)
+                .dcFont(size: 13).foregroundStyle(Color.dcMuted).lineLimit(1)
         }
         AuthorLine(person: row.author, date: row.createdAt, commentCount: row.commentCount)
     }
@@ -256,7 +268,8 @@ private struct ThreadTitle: View {
     let narrowWidth: CGFloat?
     let beside: CGFloat
 
-    private static let fontSize: CGFloat = 18
+    // Rendering and TextKit's float measurement must use the same scaled size.
+    @ScaledMetric(relativeTo: .body) private var fontSize: CGFloat = 18
 
     var body: some View {
         if let narrowWidth {
@@ -272,7 +285,7 @@ private struct ThreadTitle: View {
 
     private func styled(_ s: String, pin: Bool) -> some View {
         (pin ? Text(Image(systemName: "pin.fill")).font(.caption2).foregroundColor(.orange) + Text("  ") : Text(""))
-            + Text(s).font(.system(size: Self.fontSize, weight: .bold)).foregroundColor(Color.dcInk)
+            + Text(s).font(.system(size: fontSize, weight: .bold)).foregroundColor(Color.dcInk)
     }
 
     /// Splits the subject after the last line that starts beside the picture.
@@ -281,7 +294,7 @@ private struct ThreadTitle: View {
         // An em space stands in for the pin icon + gap when measuring.
         let prefix = row.isPinned ? "\u{2003}" : ""
         let text = prefix + subject
-        let storage = NSTextStorage(string: text, attributes: [.font: UIFont.systemFont(ofSize: Self.fontSize, weight: .bold)])
+        let storage = NSTextStorage(string: text, attributes: [.font: UIFont.systemFont(ofSize: fontSize, weight: .bold)])
         let manager = NSLayoutManager()
         let container = NSTextContainer(size: CGSize(width: width, height: .greatestFiniteMagnitude))
         container.lineFragmentPadding = 0
@@ -345,7 +358,7 @@ struct CategoryPill: View {
             if let e = emoji, !e.isEmpty { Image(systemName: sfName(e)).font(.system(size: 10)) }
             Text(name)
         }
-        .font(.system(size: 12, weight: .semibold))
+        .dcFont(size: 12, weight: .semibold)
         .foregroundStyle(Color.dcAccentInk)
         .padding(.horizontal, 8).padding(.vertical, 2)
         .background(Color.dcAccent.opacity(0.12), in: Capsule())

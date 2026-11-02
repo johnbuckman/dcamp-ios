@@ -63,6 +63,41 @@ xcodebuild -scheme Dcamp \
 Set `DEVELOPMENT_TEAM` in `project.yml` (or in Xcode → Signing) before building
 for a device or App Store submission.
 
+### Text Size / Dynamic Type
+
+Custom native text sizes use `dcFont(size:weight:)`, backed by `@ScaledMetric`,
+so they follow iOS Text Size (including the per-app Control Center setting).
+Use semantic fonts such as `.body` directly where appropriate. Keep fixed fonts
+for artwork such as avatar initials and icons inside fixed-size media controls.
+Thread-title measurement uses the same scaled size as rendering. The embedded
+editor updates its font in place so changing Text Size preserves a draft and cursor.
+
+**My settings → Text size** also offers Small through Extra extra large with a
+live preview. The choice is saved on this device and applies immediately across
+the app. **Follow iOS** (the default) restores system and Control Center sizing.
+The size picker is hidden on Mac Catalyst, where Dynamic Type does not resize text.
+
+Present app sheets with `dcSheet` / `dcFullScreenCover` so each presentation
+observes this preference independently. Popover content also needs
+`DCTextSizePreference`; relying only on the presenting screen can leave a
+preserved presentation with stale text sizing.
+
+Run the regression tests on an iOS simulator or device (Catalyst skips these
+iOS-specific checks):
+
+```sh
+xcodegen generate
+xcodebuild -scheme Dcamp -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+Layout and platform checks also run on Mac Catalyst with
+`xcodebuild -scheme DcampUnitTests -destination 'platform=macOS,variant=Mac Catalyst' CODE_SIGNING_ALLOWED=NO test`.
+
+For a device check, open a thread, then use Control Center → **aA Text Size** →
+**dcamp Only** and move the slider in both directions. Check the thread list,
+message body, and an unsent reply; text should resize without restarting the app
+or clearing the reply.
+
 ## JS bridge for the dcamp SPA
 
 When running inside the app, `window.dcampNative` is available and

@@ -79,7 +79,7 @@ struct SearchView: View {
                     if !showAllPeople && visiblePeople.count > peopleCap {
                         Button { showAllPeople = true } label: {
                             Text(T("Show all {n} people").replacingOccurrences(of: "{n}", with: "\(visiblePeople.count)"))
-                                .font(.system(size: 14, weight: .semibold)).foregroundStyle(Color.dcAccentInk)
+                                .dcFont(size: 14, weight: .semibold).foregroundStyle(Color.dcAccentInk)
                         }
                     }
                 }
@@ -93,7 +93,7 @@ struct SearchView: View {
                     if weak > 0 {
                         Button { showWeak = true } label: {
                             Text(weak == 1 ? T("Show 1 more result…") : T("Show {n} more results…").replacingOccurrences(of: "{n}", with: "\(weak)"))
-                                .font(.system(size: 14, weight: .semibold)).foregroundStyle(Color.dcAccentInk)
+                                .dcFont(size: 14, weight: .semibold).foregroundStyle(Color.dcAccentInk)
                         }
                     }
                 }
@@ -111,7 +111,7 @@ struct SearchView: View {
                 Button { showHelp = true } label: { Image(systemName: "info.circle") }
             }
         }
-        .sheet(isPresented: $showHelp) { SearchHelpSheet() }
+        .dcSheet(isPresented: $showHelp) { SearchHelpSheet() }
         #if DEBUG
         .onAppear {   // headless harness: DCAMP_SHOT_QUERY pre-fills the query, DCAMP_SHOT_MORE=1 expands the weak tail
             let env = ProcessInfo.processInfo.environment
@@ -128,16 +128,16 @@ struct SearchView: View {
             if let a = derekAnswer {
                 HStack(spacing: 6) {
                     Image(systemName: "sparkles").foregroundStyle(Color.dcAccent)
-                    Text(T("Derek says")).font(.system(size: 14, weight: .bold)).foregroundStyle(Color.dcInk)
+                    Text(T("Derek says")).dcFont(size: 14, weight: .bold).foregroundStyle(Color.dcInk)
                 }
-                TrixContentView(html: a, onRoute: routeToken, paragraphSpacing: 8).font(.system(size: 15))
+                TrixContentView(html: a, onRoute: routeToken, paragraphSpacing: 8).dcFont(size: 15)
             } else {
                 Button { askDerek() } label: {
                     HStack(spacing: 8) {
                         if derekLoading { ProgressView().controlSize(.small) }
                         else { Image(systemName: "sparkles") }
                         Text(derekLoading ? T("Derek is thinking…") : T("Ask Derek about “{q}”").replacingOccurrences(of: "{q}", with: query))
-                            .font(.system(size: 15, weight: .semibold))
+                            .dcFont(size: 15, weight: .semibold)
                     }
                     .foregroundStyle(Color.dcAccentInk)
                 }
@@ -200,7 +200,7 @@ struct SearchView: View {
                 }
             }
             if !response.people.isEmpty, let ex = response.experts, !ex.isEmpty {
-                Toggle(isOn: $expertsOnly) { Text(T("Experts only")).font(.system(size: 13, weight: .semibold)) }
+                Toggle(isOn: $expertsOnly) { Text(T("Experts only")).dcFont(size: 13, weight: .semibold) }
                     .toggleStyle(.button).tint(.dcAccent).font(.caption)
             }
         }
@@ -265,16 +265,16 @@ struct SearchHitRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 TypePill(type: hit.type)
-                Text(highlighted(hit.title ?? T("Untitled"))).font(.system(size: 15, weight: .semibold))
+                Text(highlighted(hit.title ?? T("Untitled"))).dcFont(size: 15, weight: .semibold)
                     .foregroundStyle(Color.dcInk).lineLimit(1)
                 if hit.isUntranslated {
-                    Text(T("not translated")).font(.system(size: 10)).foregroundStyle(Color.dcMuted)
+                    Text(T("not translated")).dcFont(size: 10).foregroundStyle(Color.dcMuted)
                         .padding(.horizontal, 5).padding(.vertical, 1)
                         .overlay(Capsule().stroke(Color.dcLineStrong, lineWidth: 1))
                 }
             }
             if let s = hit.snippet, !s.isEmpty {
-                Text(highlighted(PlainText.strip(s))).font(.system(size: 13)).foregroundStyle(Color.dcInkSoft).lineLimit(2)
+                Text(highlighted(PlainText.strip(s))).dcFont(size: 13).foregroundStyle(Color.dcInkSoft).lineLimit(2)
             }
             metaLine
         }
@@ -284,7 +284,7 @@ struct SearchHitRow: View {
     @ViewBuilder private var metaLine: some View {
         let bits: [String] = [hit.author?.name, hit.forum, hit.createdAt.map { RelativeTime.string($0) }].compactMap { $0 }.filter { !$0.isEmpty }
         if !bits.isEmpty {
-            Text(bits.joined(separator: " · ")).font(.system(size: 11)).foregroundStyle(Color.dcMuted).lineLimit(1)
+            Text(bits.joined(separator: " · ")).dcFont(size: 11).foregroundStyle(Color.dcMuted).lineLimit(1)
         }
     }
 
@@ -311,7 +311,7 @@ struct SearchHitRow: View {
 struct TypePill: View {
     let type: String?
     var body: some View {
-        Text(label).font(.system(size: 10, weight: .bold)).foregroundStyle(tint)
+        Text(label).dcFont(size: 10, weight: .bold).foregroundStyle(tint)
             .padding(.horizontal, 6).padding(.vertical, 1)
             .background(tint.opacity(0.12), in: Capsule())
     }

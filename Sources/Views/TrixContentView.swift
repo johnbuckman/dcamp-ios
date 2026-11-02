@@ -209,7 +209,7 @@ struct TrixTableView: View {
                     HStack(spacing: 0) {
                         ForEach(0..<cols, id: \.self) { c in
                             Text(c < row.count ? row[c] : AttributedString(""))
-                                .font(r == 0 ? .system(size: 14, weight: .bold) : .system(size: 14))
+                                .dcFont(size: 14, weight: r == 0 ? .bold : .regular)
                                 .frame(minWidth: 90, maxWidth: 240, alignment: .leading)
                                 .fixedSize(horizontal: false, vertical: true)
                                 .padding(.horizontal, 10).padding(.vertical, 7)
@@ -279,7 +279,7 @@ struct VideoBlockView: View {
             .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
-        .fullScreenCover(isPresented: $playing) { VideoPlayerSheet(url: url) }
+        .dcFullScreenCover(isPresented: $playing) { VideoPlayerSheet(url: url) }
     }
 }
 
@@ -361,7 +361,7 @@ struct ZoomableTrixImage: View {
             }
         }
         .id(attempt)
-        .fullScreenCover(isPresented: $showFull) { ImageZoomViewer(url: url) }
+        .dcFullScreenCover(isPresented: $showFull) { ImageZoomViewer(url: url) }
     }
 }
 

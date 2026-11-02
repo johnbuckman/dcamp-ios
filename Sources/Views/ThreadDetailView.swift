@@ -94,7 +94,7 @@ struct ThreadDetailView: View {
                     if !visibleComments.isEmpty {
                         let shownCount = hiddenMiddle > 0 ? visibleComments.count + hiddenMiddle : visibleComments.count
                         Text((shownCount == 1 ? T("{n} comment") : T("{n} comments")).replacingOccurrences(of: "{n}", with: "\(shownCount)"))
-                            .font(.system(size: 16, weight: .bold)).foregroundStyle(Color.dcInk).padding(.top, 4)
+                            .dcFont(size: 16, weight: .bold).foregroundStyle(Color.dcInk).padding(.top, 4)
                         VStack(spacing: 0) {
                             ForEach(visibleComments) { c in
                                 if c.id == firstUnreadCommentID { SinceLastVisitDivider() }
@@ -131,13 +131,13 @@ struct ThreadDetailView: View {
                 }
             }
         }
-        .sheet(isPresented: $showFilter) {
+        .dcSheet(isPresented: $showFilter) {
             FilterSheet(onApply: {}).environment(session).environment(forumFilter)
         }
-        .sheet(item: $editingMessage) { m in
+        .dcSheet(item: $editingMessage) { m in
             ComposeView(mode: .editThread(message: m)) { _ in Task { await load() } }
         }
-        .sheet(item: $editingComment) { c in
+        .dcSheet(item: $editingComment) { c in
             ComposeView(mode: .editComment(comment: c)) { _ in Task { await load() } }
         }
         .onChange(of: scrollTick) { withAnimation { proxy.scrollTo("composer", anchor: .bottom) } }
@@ -185,7 +185,7 @@ struct ThreadDetailView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 8) {
                         if m.pinned == 1 { Image(systemName: "pin.fill").foregroundStyle(.orange) }
-                        Text(m.displaySubject).font(.system(size: 24, weight: .heavy)).foregroundStyle(Color.dcInk)
+                        Text(m.displaySubject).dcFont(size: 24, weight: .heavy).foregroundStyle(Color.dcInk)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     AuthorLine(person: m.author, date: m.createdAt)
@@ -193,7 +193,7 @@ struct ThreadDetailView: View {
                 Spacer(minLength: 0)
                 messageMenu(m)
             }
-            TranslatableText(original: m.html, translated: m.bodyTr, onRoute: route).font(.system(size: 16))
+            TranslatableText(original: m.html, translated: m.bodyTr, onRoute: route).dcFont(size: 16)
             BoostBar(type: "message", id: m.id, boosts: m.boosts ?? Boosts()) { await load() }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -227,7 +227,7 @@ struct ThreadDetailView: View {
                 Button(role: .destructive) { pendingDeleteMessage = m } label: { Label(T("Delete"), systemImage: "trash") }
             }
         } label: {
-            Image(systemName: "ellipsis").font(.system(size: 18)).foregroundStyle(Color.dcMuted).padding(6)
+            Image(systemName: "ellipsis").dcFont(size: 18).foregroundStyle(Color.dcMuted).padding(6)
         }
     }
 
@@ -242,7 +242,7 @@ struct ThreadDetailView: View {
                     Spacer(minLength: 0)
                     commentMenu(c)
                 }
-                TranslatableText(original: c.html, translated: c.bodyTr, onRoute: route).font(.system(size: 16))
+                TranslatableText(original: c.html, translated: c.bodyTr, onRoute: route).dcFont(size: 16)
                 BoostBar(type: "comment", id: c.id, boosts: c.boosts ?? Boosts()) { await load() }
             }
         }
@@ -263,7 +263,7 @@ struct ThreadDetailView: View {
                 Button(role: .destructive) { pendingDeleteComment = c } label: { Label(T("Delete"), systemImage: "trash") }
             }
         } label: {
-            Image(systemName: "ellipsis").font(.system(size: 15)).foregroundStyle(Color.dcMuted).padding(4)
+            Image(systemName: "ellipsis").dcFont(size: 15).foregroundStyle(Color.dcMuted).padding(4)
         }
     }
 
@@ -272,7 +272,7 @@ struct ThreadDetailView: View {
     @ViewBuilder private var composerSection: some View {
         if session.canPost {
             VStack(alignment: .leading, spacing: 8) {
-                Text(T("Add a comment")).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.dcInk)
+                Text(T("Add a comment")).dcFont(size: 15, weight: .semibold).foregroundStyle(Color.dcInk)
                 InlineComposer(placeholder: T("Write a comment… (rich text, @mention)"), model: composerModel, draftKey: "thread:\(currentID)") { html in
                     do {
                         let r = try await api.createComment(messageID: currentID, bodyHTML: html)
@@ -425,7 +425,7 @@ struct ThreadDetailView: View {
         Button { loadAll() } label: {
             HStack(spacing: 8) {
                 if loadingAll { ProgressView().controlSize(.small) } else { Image(systemName: "ellipsis") }
-                Text(T("Load all messages") + " (\(hiddenMiddle))").font(.system(size: 14, weight: .semibold))
+                Text(T("Load all messages") + " (\(hiddenMiddle))").dcFont(size: 14, weight: .semibold)
             }
             .frame(maxWidth: .infinity).padding(.vertical, 12)
             .foregroundStyle(Color.dcAccentInk)
@@ -470,7 +470,7 @@ struct SinceLastVisitDivider: View {
         HStack(spacing: 8) {
             Rectangle().fill(Color.dcAccent.opacity(0.35)).frame(height: 1)
             Text(T("New since your last visit"))
-                .font(.system(size: 11, weight: .bold)).foregroundStyle(Color.dcAccentInk).fixedSize()
+                .dcFont(size: 11, weight: .bold).foregroundStyle(Color.dcAccentInk).fixedSize()
             Rectangle().fill(Color.dcAccent.opacity(0.35)).frame(height: 1)
         }
         .padding(.horizontal, 12).padding(.vertical, 8)

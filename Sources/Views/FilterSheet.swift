@@ -50,7 +50,7 @@ struct FilterSheet: View {
 
     private var onOffRow: some View {
         HStack {
-            Text(T("Filter")).font(.system(size: 17, weight: .semibold)).foregroundStyle(Color.dcInk)
+            Text(T("Filter")).dcFont(size: 17, weight: .semibold).foregroundStyle(Color.dcInk)
             Spacer()
             Toggle("", isOn: Binding(
                 get: { filter.on },
@@ -63,7 +63,7 @@ struct FilterSheet: View {
 
     private var involvementSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(T("Show")).font(.system(size: 13, weight: .bold)).foregroundStyle(Color.dcMuted)
+            Text(T("Show")).dcFont(size: 13, weight: .bold).foregroundStyle(Color.dcMuted)
             FlowLayout(hSpacing: 8, vSpacing: 8) {
                 ForEach(views, id: \.0) { v in
                     DCFilterPill(icon: v.2, title: v.1, active: filter.view == v.0) {
@@ -77,11 +77,11 @@ struct FilterSheet: View {
     private var countriesSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(T("Countries")).font(.system(size: 13, weight: .bold)).foregroundStyle(Color.dcMuted)
+                Text(T("Countries")).dcFont(size: 13, weight: .bold).foregroundStyle(Color.dcMuted)
                 Spacer()
                 if !filter.countries.isEmpty {
                     Text(filter.countries.map { Countries.name($0) }.joined(separator: ", "))
-                        .font(.system(size: 12)).foregroundStyle(Color.dcInkSoft).lineLimit(1)
+                        .dcFont(size: 12).foregroundStyle(Color.dcInkSoft).lineLimit(1)
                 }
             }
             TextField(T("Search countries…"), text: $query)
@@ -126,7 +126,7 @@ struct FilterSheet: View {
 
     private var savedSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(T("Saved filters")).font(.system(size: 13, weight: .bold)).foregroundStyle(Color.dcMuted)
+            Text(T("Saved filters")).dcFont(size: 13, weight: .bold).foregroundStyle(Color.dcMuted)
             ForEach(saved) { f in
                 HStack {
                     Button {

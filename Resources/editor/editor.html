@@ -25,10 +25,10 @@
     box-shadow: 0 6px 20px rgba(0,0,0,.18); }
   .dc-color-pop.open { display: block; }
   .dc-color-pop .dc-row { display: flex; align-items: center; gap: 7px; margin: 3px 0; }
-  .dc-color-pop .dc-cue { width: 15px; text-align: center; font: 600 12px -apple-system; opacity: .55; }
+  .dc-color-pop .dc-cue { width: 15px; text-align: center; font: 600 calc(12rem / 17) -apple-system; opacity: .55; }
   .dc-sw { width: 20px; height: 20px; border-radius: 50%; cursor: pointer; padding: 0;
     border: 1px solid color-mix(in srgb, canvasText 25%, transparent); }
-  .dc-color-pop .dc-clear { margin-left: 4px; font: 12px -apple-system; background: none;
+  .dc-color-pop .dc-clear { margin-left: 4px; font: calc(12rem / 17) -apple-system; background: none;
     border: 0; color: inherit; text-decoration: underline; cursor: pointer; padding: 2px 4px; }
   .dc-color-btn svg, .trix-table-btn svg { vertical-align: middle; }
   /* table-insert modal */
@@ -36,18 +36,18 @@
     display: flex; align-items: center; justify-content: center; }
   .dc-modal { background: canvas; color: canvasText; border-radius: 14px; padding: 16px;
     width: min(92vw, 460px); box-shadow: 0 12px 40px rgba(0,0,0,.3); }
-  .dc-modal-title { font: 700 16px -apple-system; margin-bottom: 12px; }
+  .dc-modal-title { font: 700 calc(16rem / 17) -apple-system; margin-bottom: 12px; }
   .dc-modal-ctrls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
-    font: 13px -apple-system; margin-bottom: 12px; }
+    font: calc(13rem / 17) -apple-system; margin-bottom: 12px; }
   .dc-stepper b { display: inline-block; min-width: 20px; text-align: center; }
   .dc-stepper button { width: 26px; height: 26px; border-radius: 6px; margin: 0 3px;
     border: 1px solid color-mix(in srgb, canvasText 22%, transparent); background: canvas; color: inherit; font-size: 15px; cursor: pointer; }
   .dc-tgrid { display: grid; gap: 5px; margin-bottom: 14px; }
-  .dc-tcell { padding: 7px 8px; font: 14px -apple-system; border-radius: 6px;
+  .dc-tcell { padding: 7px 8px; font: calc(14rem / 17) -apple-system; border-radius: 6px;
     border: 1px solid color-mix(in srgb, canvasText 20%, transparent); background: canvas; color: inherit; min-width: 0; }
   .dc-tcell.dc-th { font-weight: 700; }
   .dc-modal-act { display: flex; justify-content: flex-end; gap: 10px; }
-  .dc-btn { padding: 8px 16px; border-radius: 8px; font: 600 14px -apple-system; cursor: pointer;
+  .dc-btn { padding: 8px 16px; border-radius: 8px; font: 600 calc(14rem / 17) -apple-system; cursor: pointer;
     border: 1px solid color-mix(in srgb, canvasText 20%, transparent); background: canvas; color: inherit; }
   .dc-btn-primary { background: #16a34a; border-color: #16a34a; color: #fff; }
 </style>
@@ -82,6 +82,16 @@
     var avail = window.innerHeight - toolbarH;
     editorEl.style.minHeight = (avail > 360 ? Math.max(44, avail - 16) : 44) + "px";
   }
+  // SwiftUI supplies the current Dynamic Type size on load and on live changes.
+  // Keep this out of the document model so saved posts never acquire a font size.
+  window.dcampSetFontSize = function (size) {
+    document.documentElement.style.fontSize = size + "px";
+    document.body.style.fontSize = "inherit";
+    editorEl.style.fontSize = "inherit";
+    fitEditor();
+    post({ type: "change", html: input.value,
+      length: editorEl.editor.getDocument().toString().trim().length, height: contentHeight() });
+  };
   window.addEventListener("resize", fitEditor);
   editorEl.addEventListener("trix-initialize", function () { post({ type: "ready" }); buildToolbar(); fitEditor(); post({ type: "change", html: input.value, length: 0, height: contentHeight() }); });
 

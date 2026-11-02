@@ -49,18 +49,18 @@ struct MainView: View {
             Task { try? await Task.sleep(nanoseconds: 4_000_000_000); if toastNotif?.id == id { toastNotif = nil } }
         }
         // Settings is a full-screen page (like the web), not a small window overlay.
-        .fullScreenCover(isPresented: $showAccount) { SettingsView().environment(session).environment(router) }
-        .sheet(isPresented: $showNotifs, onDismiss: {
+        .dcFullScreenCover(isPresented: $showAccount) { SettingsView().environment(session).environment(router) }
+        .dcSheet(isPresented: $showNotifs, onDismiss: {
             // push AFTER the sheet is gone (pushing mid-dismiss is dropped — gotcha 7)
             if let r = pendingNotifRoute { pendingNotifRoute = nil; openRoute(r) }
         }) {
             NotificationsView(store: notifStore) { pendingNotifRoute = $0 }
                 .environment(session).environment(router)
         }
-        .sheet(item: personSheet) { ref in
+        .dcSheet(item: personSheet) { ref in
             PersonCardView(personID: ref.id).environment(session).environment(router)
         }
-        .sheet(isPresented: $showHelp) { HelpView() }
+        .dcSheet(isPresented: $showHelp) { HelpView() }
         .task { await startLive() }
         .onChange(of: router.threadID) { _, id in if let id { path.append(.thread(id)); router.threadID = nil } }
         .onChange(of: router.dmID) { _, id in if let id { path.append(.dm(id)); router.dmID = nil } }
@@ -79,7 +79,7 @@ struct MainView: View {
         NavigationStack(path: $path) {
             ForumsHomeView(path: $path)
                 .navigationDestination(for: Dest.self) { dest in
-                    destination(dest).dcWideBack()
+                    destination(dest).dcWideBack().modifier(DCTextSizePreference())
                 }
                 .dcampChrome(notifStore: notifStore, showNotifs: $showNotifs, showAccount: $showAccount)
         }
@@ -119,6 +119,12 @@ struct MainView: View {
     }
 
     private func startLive() async {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["DCAMP_SHOT_SCREEN"] == "textsize" {
+            showAccount = true
+            return
+        }
+        #endif
         strings.lang = session.lang
         await strings.load()
         notifStore.start()
@@ -180,12 +186,14 @@ private struct DcampChrome: ViewModifier {
         HStack(spacing: 10) {
             HStack(spacing: 7) {
                 Image("DcampMark").resizable().aspectRatio(contentMode: .fit).frame(height: 22)
-                Text("dcamp").font(.system(size: 18, weight: .heavy)).foregroundStyle(Color.dcInk)
+                Text("dcamp").dcFont(size: 18, weight: .heavy).foregroundStyle(Color.dcInk)
             }
             Spacer()
             NotificationsBell(count: notifStore.unread) { showNotifs = true }
             Button { showAccount = true } label: { Avatar(person: session.me, size: 28) }
                 .buttonStyle(.plain)
+                .accessibilityLabel(T("My settings"))
+                .accessibilityIdentifier("open-settings")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
@@ -255,8 +263,8 @@ struct ForumsHomeView: View {
         return ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(T("Forums")).font(.system(size: 32, weight: .heavy)).foregroundStyle(Color.dcInk)
-                    Text("\(T("Forums")): \(session.boards.count)").font(.system(size: 15)).foregroundStyle(Color.dcMuted)
+                    Text(T("Forums")).dcFont(size: 32, weight: .heavy).foregroundStyle(Color.dcInk)
+                    Text("\(T("Forums")): \(session.boards.count)").dcFont(size: 15).foregroundStyle(Color.dcMuted)
                 }
 
                 SummarizeBar(kind: .home)
@@ -293,7 +301,12 @@ struct ForumsHomeView: View {
         .background(Color.dcBg)
         .scrollContentBackground(.hidden)
         .navigationBarTitleDisplayMode(.inline)
-        .task { dmUnread = await DcampAPI.shared.dmUnread(); await loadChatStat() }
+        .task {
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["DCAMP_SHOT_SCREEN"] == "textsize" { return }
+            #endif
+            dmUnread = await DcampAPI.shared.dmUnread(); await loadChatStat()
+        }
         .refreshable { dmUnread = await DcampAPI.shared.dmUnread(); await loadChatStat(); await session.refresh() }
     }
 
@@ -333,20 +346,20 @@ struct ForumCard: View {
                 .frame(width: 38, height: 38)
                 .background(ForumStyle.tint(board), in: RoundedRectangle(cornerRadius: 10))
             HStack(spacing: 6) {
-                Text(T(board.name)).font(.system(size: 19, weight: .bold)).foregroundStyle(Color.dcInk)
+                Text(T(board.name)).dcFont(size: 19, weight: .bold).foregroundStyle(Color.dcInk)
                 // Unread pip: new threads since this member's last visit (web `p.new_since`).
                 if let ns = board.newSince, ns > 0 {
-                    Text("\(ns)").font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                    Text("\(ns)").dcFont(size: 12, weight: .bold).foregroundStyle(.white)
                         .padding(.horizontal, 6).padding(.vertical, 1)
                         .background(Color.dcAccent, in: Capsule())
                 }
             }
             if let d = board.description, !d.isEmpty {
-                Text(T(d)).font(.system(size: 15)).foregroundStyle(Color.dcInkSoft)
+                Text(T(d)).dcFont(size: 15).foregroundStyle(Color.dcInkSoft)
                     .fixedSize(horizontal: false, vertical: true)
             }
             if let n = board.messageCount {
-                Text("\(T("Messages")): \(n)").font(.system(size: 14)).foregroundStyle(Color.dcMuted).padding(.top, 2)
+                Text("\(T("Messages")): \(n)").dcFont(size: 14).foregroundStyle(Color.dcMuted).padding(.top, 2)
             }
         }
         .frame(maxWidth: .infinity, minHeight: 180, maxHeight: .infinity, alignment: .topLeading)
@@ -367,14 +380,14 @@ struct OtherCard: View {
                     .background(tint, in: RoundedRectangle(cornerRadius: 10))
                 Spacer()
                 if badge > 0 {
-                    Text("\(badge)").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                    Text("\(badge)").dcFont(size: 13, weight: .bold).foregroundStyle(.white)
                         .padding(.horizontal, 7).padding(.vertical, 2)
                         .background(Color.red, in: Capsule())
                 }
             }
-            Text(title).font(.system(size: 19, weight: .bold)).foregroundStyle(Color.dcInk)
-            Text(subtitle).font(.system(size: 15)).foregroundStyle(Color.dcInkSoft)
-            if let stat { Text(stat).font(.system(size: 14)).foregroundStyle(Color.dcMuted).padding(.top, 2) }
+            Text(title).dcFont(size: 19, weight: .bold).foregroundStyle(Color.dcInk)
+            Text(subtitle).dcFont(size: 15).foregroundStyle(Color.dcInkSoft)
+            if let stat { Text(stat).dcFont(size: 14).foregroundStyle(Color.dcMuted).padding(.top, 2) }
         }
         .frame(maxWidth: .infinity, minHeight: 120, maxHeight: .infinity, alignment: .topLeading)
         .dcCard()
@@ -392,8 +405,8 @@ struct NotifToast: View {
                 if notif.actor != nil { Avatar(person: notif.actor, size: 32) }
                 else { Image(systemName: notif.icon).foregroundStyle(Color.dcAccent).frame(width: 32) }
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(notif.actor?.name ?? "dcamp").font(.system(size: 14, weight: .bold)).foregroundStyle(Color.dcInk)
-                    Text(notifKindLabel(notif)).font(.system(size: 13)).foregroundStyle(Color.dcInkSoft).lineLimit(1)
+                    Text(notif.actor?.name ?? "dcamp").dcFont(size: 14, weight: .bold).foregroundStyle(Color.dcInk)
+                    Text(notifKindLabel(notif)).dcFont(size: 13).foregroundStyle(Color.dcInkSoft).lineLimit(1)
                 }
                 Spacer()
                 Image(systemName: "chevron.right").font(.caption).foregroundStyle(Color.dcMuted)

@@ -34,6 +34,17 @@ final class SessionStore {
     /// Called once on launch: resume a saved token or show the login screen.
     func start() async {
         #if DEBUG
+        // Offline UI regression fixture: exercise the real settings presentation
+        // without a member account, network traffic, or push permission prompts.
+        if ProcessInfo.processInfo.environment["DCAMP_SHOT_SCREEN"] == "textsize" {
+            if ProcessInfo.processInfo.environment["DCAMP_RESET_TEXT_SIZE"] == "1" {
+                UserDefaults.standard.removeObject(forKey: "dcamp_text_size")
+            }
+            me = Person(id: -1, name: "Text Size Test")
+            boards = [Board(id: -1, name: "Test forum")]
+            phase = .loggedIn
+            return
+        }
         // Screenshot harness: force a UI language (seeds the X-Dcamp-Lang header pref).
         if let l = ProcessInfo.processInfo.environment["DCAMP_LANG"] {
             UserDefaults.standard.set(l, forKey: "dcamp_lang")

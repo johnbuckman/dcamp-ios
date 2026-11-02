@@ -14,21 +14,21 @@ struct LoginView: View {
                 HStack(spacing: 9) {
                     // Same DE1 espresso-machine mark as the app top bar (not a coffee cup).
                     Image("DcampMark").resizable().aspectRatio(contentMode: .fit).frame(height: 30)
-                    Text(T("dcamp")).font(.system(size: 22, weight: .heavy)).foregroundStyle(Color.dcInk)
+                    Text(T("dcamp")).dcFont(size: 22, weight: .heavy).foregroundStyle(Color.dcInk)
                 }
 
                 VStack(spacing: 6) {
                     Text(T("Welcome to the Decent Diaspora"))
-                        .font(.system(size: 22, weight: .heavy)).foregroundStyle(Color.dcInk)
+                        .dcFont(size: 22, weight: .heavy).foregroundStyle(Color.dcInk)
                         .multilineTextAlignment(.center)
                     Text(T("Sign in with your existing Decent support account."))
-                        .font(.system(size: 15)).foregroundStyle(Color.dcInkSoft)
+                        .dcFont(size: 15).foregroundStyle(Color.dcInkSoft)
                         .multilineTextAlignment(.center)
                 }
 
                 VStack(spacing: 12) {
                     if let msg = session.errorMessage {
-                        Text(msg).font(.system(size: 13)).foregroundStyle(.red)
+                        Text(msg).dcFont(size: 13).foregroundStyle(.red)
                             .multilineTextAlignment(.center)
                     }
                     Button {
@@ -45,7 +45,7 @@ struct LoginView: View {
                     .disabled(session.loggingIn)
 
                     Text(T("Opens a secure browser. Your password is never entered in the app."))
-                        .font(.system(size: 12)).foregroundStyle(Color.dcMuted)
+                        .dcFont(size: 12).foregroundStyle(Color.dcMuted)
                         .multilineTextAlignment(.center)
                 }
             }

@@ -44,6 +44,16 @@ final class NotificationsStore {
     }
 
     func loadFeed(limit: Int? = nil) async {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["DCAMP_SHOT_SCREEN"] == "textsize" {
+            feed = [ActivityItem(kind: "mention", subject: "Coffee discussion", createdAt: 1_790_000_000,
+                                 preview: "A notification preview with enough words to show the selected text size.",
+                                 read: 0, more: 2, ids: "text-size-fixture",
+                                 actor: Person(id: -2, name: "Test Member"))]
+            unread = 1
+            return
+        }
+        #endif
         if let limit { feedLimit = limit }
         loadingFeed = true; defer { loadingFeed = false }
         guard let r = try? await api.activityFeed(limit: feedLimit) else { return }

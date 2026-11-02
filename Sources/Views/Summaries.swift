@@ -58,8 +58,8 @@ struct SummarizeBar: View {
                     }
                 } label: {
                     HStack(spacing: 4) {
-                        Text(Self.daysLabel(days)).font(.system(size: 14, weight: .medium))
-                        Image(systemName: "chevron.down").font(.system(size: 10))
+                        Text(Self.daysLabel(days)).dcFont(size: 14, weight: .medium)
+                        Image(systemName: "chevron.down").dcFont(size: 10)
                     }
                     .foregroundStyle(Color.dcInkSoft)
                     .padding(.horizontal, 10).padding(.vertical, 6)
@@ -69,7 +69,7 @@ struct SummarizeBar: View {
                 Button(expanded ? T("Hide") : T("Summarize")) { toggle() }.buttonStyle(DCPrimaryButtonStyle())
                 if expanded && hSize == .regular {
                     Button { pinToSidebar() } label: { Label(T("Show in sidebar"), systemImage: "sidebar.left") }
-                        .font(.system(size: 13))
+                        .dcFont(size: 13)
                 }
                 Spacer()
             }
@@ -79,8 +79,8 @@ struct SummarizeBar: View {
                     if let mine {   // "you were mentioned" callout (home summary)
                         VStack(alignment: .leading, spacing: 4) {
                             Label(T("You were mentioned"), systemImage: "at.circle.fill")
-                                .font(.system(size: 13, weight: .bold)).foregroundStyle(Color.dcAccentInk)
-                            TrixContentView(html: mine, paragraphSpacing: 8).font(.system(size: 14))
+                                .dcFont(size: 13, weight: .bold).foregroundStyle(Color.dcAccentInk)
+                            TrixContentView(html: mine, paragraphSpacing: 8).dcFont(size: 14)
                         }
                         .padding(12)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -91,7 +91,7 @@ struct SummarizeBar: View {
                             HStack(spacing: 8) { ProgressView(); Text(T("Summarizing…")).font(.footnote).foregroundStyle(Color.dcMuted) }
                                 .frame(maxWidth: .infinity).padding(.vertical, 20)
                         } else if let html {
-                            TrixContentView(html: html, paragraphSpacing: 8).font(.system(size: 15))
+                            TrixContentView(html: html, paragraphSpacing: 8).dcFont(size: 15)
                         }
                     }
                 }
@@ -133,7 +133,7 @@ struct SummarySidebarView: View {
         VStack(spacing: 0) {
             HStack {
                 Image(systemName: "sparkles").foregroundStyle(.yellow)
-                Text(pin.title).font(.system(size: 15, weight: .bold)).foregroundStyle(Color.dcInk).lineLimit(1)
+                Text(pin.title).dcFont(size: 15, weight: .bold).foregroundStyle(Color.dcInk).lineLimit(1)
                 Spacer()
                 Button { pin.clear() } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Color.dcMuted) }
             }
@@ -143,7 +143,7 @@ struct SummarySidebarView: View {
                 if loading {
                     ProgressView().padding(.top, 40)
                 } else if let html {
-                    TrixContentView(html: html, paragraphSpacing: 8).font(.system(size: 14)).padding(14)
+                    TrixContentView(html: html, paragraphSpacing: 8).dcFont(size: 14).padding(14)
                 }
             }
         }
@@ -205,7 +205,7 @@ struct EmailSummariesView: View {
             }
             Section(T("Preview")) {
                 if loading { HStack { ProgressView(); Text(T("Generating…")).foregroundStyle(Color.dcMuted) } }
-                else if let d = digest { TrixContentView(html: d, paragraphSpacing: 8).font(.system(size: 14)) }
+                else if let d = digest { TrixContentView(html: d, paragraphSpacing: 8).dcFont(size: 14) }
                 else { Button(T("Preview my digest")) { Task { await preview() } } }
             }
         }

@@ -7,6 +7,7 @@ struct RootView: View {
 
     var body: some View {
         content
+            .modifier(DCTextSizePreference())
             .tint(Color.dcAccent)
             .preferredColorScheme(ThemeMode(rawValue: themeRaw)?.colorScheme)
             .environment(\.layoutDirection, session.lang == "ar" ? .rightToLeft : .leftToRight)
