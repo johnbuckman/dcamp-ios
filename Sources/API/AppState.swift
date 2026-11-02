@@ -21,10 +21,11 @@ final class Router {
 @Observable
 final class SummaryPin {
     var kind: SummaryKind?
+    var bookmarks = false
     var days: Int = 7
     var title: String = "Summary"
-    var visible: Bool { kind != nil }
-    func clear() { kind = nil }
+    var visible: Bool { kind != nil || bookmarks }
+    func clear() { kind = nil; bookmarks = false }
 }
 
 /// Summary target, shared by the summarize bar and the pinned sidebar.

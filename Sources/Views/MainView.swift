@@ -5,7 +5,7 @@ struct PersonRef: Identifiable { let id: Int }
 
 /// Navigation destinations for the single-column stack (mirrors the web app,
 /// which is one centered column with a persistent top bar — not master/detail).
-enum Dest: Hashable { case board(Int), thread(Int), chat, dms, dm(Int), search, find }
+enum Dest: Hashable { case board(Int), thread(Int), comment(Int, Int), chat, dms, dm(Int), search, find, bookmarks }
 
 /// App shell: a `NavigationStack` over the warm-paper forums home, matching the
 /// dcamp web layout. Notifications + account live in the top bar.
@@ -15,10 +15,15 @@ struct MainView: View {
     @Environment(UIStrings.self) private var strings
     @Environment(SummaryPin.self) private var summaryPin
     @Environment(\.horizontalSizeClass) private var hSize
+    @Environment(\.dynamicTypeSize) private var textSize
 
     @State private var path: [Dest] = []
     @State private var showAccount = false
     @State private var showNotifs = false
+    @State private var showBookmarks = false
+    @State private var bookmarks = BookmarksStore()
+    @State private var pendingBookmark: BookmarkItem?
+    @State private var pendingAllBookmarks = false
     @State private var notifStore = NotificationsStore()
     @State private var toastNotif: Notif?
     @State private var pendingNotifRoute: String?   // opened from the inbox sheet; pushed on dismiss
@@ -27,7 +32,10 @@ struct MainView: View {
     var body: some View {
         HStack(spacing: 0) {
             if hSize == .regular && summaryPin.visible {
-                SummarySidebarView().frame(width: 340)
+                Group {
+                    if summaryPin.bookmarks { BookmarkSidebarView(onOpen: openBookmark) }
+                    else { SummarySidebarView() }
+                }.frame(width: 340)
                 Divider()
             }
             stack
@@ -57,6 +65,16 @@ struct MainView: View {
             NotificationsView(store: notifStore) { pendingNotifRoute = $0 }
                 .environment(session).environment(router)
         }
+        .sheet(isPresented: $showBookmarks, onDismiss: {
+            // Like notifications, navigate only after the native sheet has dismissed.
+            if pendingAllBookmarks { openBookmarks() }
+            else if let item = pendingBookmark { openBookmark(item) }
+            pendingAllBookmarks = false; pendingBookmark = nil
+        }) {
+            RecentBookmarksView(onOpen: { pendingBookmark = $0 }, onSeeAll: { pendingAllBookmarks = true })
+                .environment(bookmarks)
+                .dynamicTypeSize(textSize)
+        }
         .sheet(item: personSheet) { ref in
             PersonCardView(personID: ref.id).environment(session).environment(router)
         }
@@ -73,6 +91,7 @@ struct MainView: View {
         .onReceive(NotificationCenter.default.publisher(for: .dcampPushTokenReady)) { _ in
             Task { await PushManager.shared.registerToken() }
         }
+        .environment(bookmarks)
     }
 
     private var stack: some View {
@@ -80,8 +99,12 @@ struct MainView: View {
             ForumsHomeView(path: $path)
                 .navigationDestination(for: Dest.self) { dest in
                     destination(dest).dcWideBack()
+                        .toolbar {
+                            ToolbarItem(placement: .topBarTrailing) { bookmarksButton }
+                        }
                 }
-                .dcampChrome(notifStore: notifStore, showNotifs: $showNotifs, showAccount: $showAccount)
+                .dcampChrome(notifStore: notifStore, showNotifs: $showNotifs, showAccount: $showAccount,
+                             showBookmarks: $showBookmarks)
         }
     }
 
@@ -92,16 +115,39 @@ struct MainView: View {
                 ThreadListView(board: board, path: $path)
             }
         case .thread(let id): ThreadDetailView(messageID: id).id(id)
+        case .comment(let mid, let cid): ThreadDetailView(messageID: mid, commentAnchor: cid).id("\(mid):\(cid)")
         case .chat: ChatView()
         case .dms: DMListView(path: $path)
         case .dm(let id): DMThreadView(convoID: id).id(id)
         case .search: SearchView(path: $path)
         case .find: FindForumsView()
+        case .bookmarks: BookmarksView(onOpen: openBookmark)
         }
     }
 
     private var personSheet: Binding<PersonRef?> {
         Binding(get: { router.personID.map(PersonRef.init) }, set: { router.personID = $0?.id })
+    }
+
+    private var bookmarksButton: some View {
+        Button { showBookmarks = true } label: {
+            Image(systemName: "bookmark").frame(width: 36, height: 36).contentShape(Rectangle())
+        }
+        .accessibilityLabel(T("Bookmarks"))
+        .accessibilityIdentifier("open-bookmarks")
+    }
+
+    private func openBookmarks() {
+        if path.last == .bookmarks {
+            Task { await bookmarks.load(bookmarks.all) }
+        } else {
+            path.append(.bookmarks)
+        }
+    }
+
+    private func openBookmark(_ item: BookmarkItem) {
+        if item.commentId > 0 { path.append(.comment(item.messageId, item.commentId)) }
+        else { path.append(.thread(item.messageId)) }
     }
 
     private func openNotif(_ n: Notif) {
@@ -112,6 +158,7 @@ struct MainView: View {
 
     /// Navigate to a dcamp route ("#/message/1?c=2", "#/pings/5", "#/chat", "#/p/9").
     private func openRoute(_ route: String) {
+        if route.hasSuffix("/bookmarks") { openBookmarks(); return }
         if let id = DcampRoute.messageID(from: route) { path.append(.thread(id)) }
         else if let id = DcampRoute.dmID(from: route) { path.append(.dm(id)) }
         else if let id = DcampRoute.personID(from: route) { router.personID = id }
@@ -119,6 +166,20 @@ struct MainView: View {
     }
 
     private func startLive() async {
+        #if DEBUG
+        if BookmarkFixture.enabled {
+            strings.lang = session.lang
+            if session.lang != "en" { await strings.load() }
+            let screen = ProcessInfo.processInfo.environment["DCAMP_BOOKMARKS_SCREEN"]
+            if screen == "thread" { path = [.thread(100)] }
+            else if screen == "anchored-navigation" {
+                router.threadSiblings = [100, 101]
+                path = [.comment(100, 12)]
+            }
+            else if screen != "home" { path = [.bookmarks] }
+            return
+        }
+        #endif
         strings.lang = session.lang
         await strings.load()
         notifStore.start()
@@ -139,6 +200,7 @@ struct MainView: View {
             case "search": path = [.search]
             case "settings": showAccount = true
             case "notifs": showNotifs = true
+            case "bookmarks": path = [.bookmarks]
             case "help": showHelp = true
             case "ipadsummary": summaryPin.kind = .home; summaryPin.title = "Diaspora summary"
             default: break
@@ -163,6 +225,7 @@ private struct DcampChrome: ViewModifier {
     let notifStore: NotificationsStore
     @Binding var showNotifs: Bool
     @Binding var showAccount: Bool
+    @Binding var showBookmarks: Bool
     @Environment(SessionStore.self) private var session
 
     func body(content: Content) -> some View {
@@ -184,6 +247,13 @@ private struct DcampChrome: ViewModifier {
             }
             Spacer()
             NotificationsBell(count: notifStore.unread) { showNotifs = true }
+            Button { showBookmarks = true } label: {
+                Image(systemName: "bookmark").font(.system(size: 18))
+                    .foregroundStyle(Color.dcInkSoft).frame(width: 36, height: 36).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(T("Bookmarks"))
+            .accessibilityIdentifier("open-bookmarks")
             Button { showAccount = true } label: { Avatar(person: session.me, size: 28) }
                 .buttonStyle(.plain)
         }
@@ -194,8 +264,10 @@ private struct DcampChrome: ViewModifier {
 }
 
 private extension View {
-    func dcampChrome(notifStore: NotificationsStore, showNotifs: Binding<Bool>, showAccount: Binding<Bool>) -> some View {
-        modifier(DcampChrome(notifStore: notifStore, showNotifs: showNotifs, showAccount: showAccount))
+    func dcampChrome(notifStore: NotificationsStore, showNotifs: Binding<Bool>, showAccount: Binding<Bool>,
+                     showBookmarks: Binding<Bool>) -> some View {
+        modifier(DcampChrome(notifStore: notifStore, showNotifs: showNotifs, showAccount: showAccount,
+                             showBookmarks: showBookmarks))
     }
 }
 

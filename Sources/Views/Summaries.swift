@@ -118,6 +118,7 @@ struct SummarizeBar: View {
         if let r = try? await SummaryLoader.load(kind, days: days) { html = r.html; mine = r.mine }
     }
     private func pinToSidebar() {
+        pin.bookmarks = false
         pin.kind = kind; pin.days = days; pin.title = kind.label
         expanded = false
     }
