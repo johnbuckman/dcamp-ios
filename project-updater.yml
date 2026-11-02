@@ -1,5 +1,6 @@
 packages:
   Sparkle:
+    # Keep MacUpdaterPlugin/Sparkle-LICENSE.txt in sync with the binary artifact.
     url: https://github.com/sparkle-project/Sparkle
     exactVersion: 2.10.1
 

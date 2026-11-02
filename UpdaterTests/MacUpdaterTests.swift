@@ -14,6 +14,7 @@ final class MacUpdaterTests: XCTestCase {
     func testEmbeddedAppKitBridgeLoadsInCatalyst() throws {
         let bridge = try MacUpdater.loadBridge()
         XCTAssertEqual(NSStringFromClass(type(of: bridge)), "DcampUpdaterPlugin")
+        XCTAssertNotNil(Bundle(for: type(of: bridge)).url(forResource: "Sparkle-LICENSE", withExtension: "txt"))
         XCTAssertFalse(bridge.canCheckForUpdates)
     }
 
