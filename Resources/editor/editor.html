@@ -84,6 +84,10 @@
   }
   window.addEventListener("resize", fitEditor);
   editorEl.addEventListener("trix-initialize", function () { post({ type: "ready" }); buildToolbar(); fitEditor(); post({ type: "change", html: input.value, length: 0, height: contentHeight() }); });
+  // Report focus/blur so Swift can react — e.g. scroll the focused composer above the
+  // keyboard (the composer is the last element of the thread's scroll view).
+  editorEl.addEventListener("focus", function () { post({ type: "focus", on: true }); });
+  editorEl.addEventListener("blur", function () { post({ type: "focus", on: false }); });
 
   // ⌘↵ / Ctrl+↵ submits (matches the web's bindCmdEnter).
   editorEl.addEventListener("keydown", function (e) {

@@ -148,6 +148,17 @@ struct ThreadDetailView: View {
             if h > prevComposerHeight + 1 { withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo("composer", anchor: .bottom) } }
             prevComposerHeight = h
         }
+        // The composer is the LAST thing in this scroll view, so the keyboard's safe-area
+        // inset alone leaves it underneath the keyboard. When the editor takes focus (the
+        // keyboard is about to show) pull it back into view, once the keyboard has settled.
+        .onChange(of: composerModel.editorFocused) { _, focused in
+            guard focused else { return }
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 350_000_000)
+                guard composerModel.editorFocused else { return }   // blurred or navigated away meanwhile
+                withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("composer", anchor: .bottom) }
+            }
+        }
         .confirmationDialog(T("Delete this post?"), isPresented: Binding(get: { pendingDeleteMessage != nil }, set: { if !$0 { pendingDeleteMessage = nil } }), titleVisibility: .visible) {
             Button(T("Delete"), role: .destructive) { if let m = pendingDeleteMessage { pendingDeleteMessage = nil; deleteMessage(m) } }
             Button(T("Cancel"), role: .cancel) { pendingDeleteMessage = nil }
@@ -284,9 +295,11 @@ struct ThreadDetailView: View {
                         return false
                     }
                 }
-                .background(Color.dcPanel)
-                .clipShape(RoundedRectangle(cornerRadius: DC.radius))
-                .overlay(RoundedRectangle(cornerRadius: DC.radius).stroke(Color.dcLine, lineWidth: 1))
+                // Rounded panel drawn as a background, not .clipShape: clipping cut the
+                // @mention popup off at the card edge (only ~3 of 6 suggestions visible).
+                .background(RoundedRectangle(cornerRadius: DC.radius)
+                    .fill(Color.dcPanel)
+                    .overlay(RoundedRectangle(cornerRadius: DC.radius).stroke(Color.dcLine, lineWidth: 1)))
             }
             .padding(.top, 6)
         } else {
