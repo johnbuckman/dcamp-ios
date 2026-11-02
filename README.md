@@ -63,6 +63,16 @@ xcodebuild -scheme Dcamp \
 Set `DEVELOPMENT_TEAM` in `project.yml` (or in Xcode → Signing) before building
 for a device or App Store submission.
 
+### Entering a topic
+
+The app uses the server's previous-visit timestamp to choose where a topic opens:
+first visits start at the top, unread replies retain the jump to the first new
+reply, and fully read topics open at the bottom with "No new messages". A link to
+a specific comment takes priority. No device-local reading history is introduced.
+
+Run the reading-position regression tests with
+`xcodebuild -scheme DcampReading -destination 'platform=iOS Simulator,name=iPhone 17' CODE_SIGNING_ALLOWED=NO test`.
+
 ## JS bridge for the dcamp SPA
 
 When running inside the app, `window.dcampNative` is available and

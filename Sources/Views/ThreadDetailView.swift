@@ -66,6 +66,12 @@ struct ThreadDetailView: View {
         return visibleComments.first(where: { ($0.createdAt ?? 0) > lv })?.id
     }
 
+    private var initialReadingPosition: ThreadReadingPosition {
+        guard let message else { return .top }
+        return .initial(message: message, comments: comments, visibleComments: visibleComments,
+                        lastVisit: lastVisit, commentAnchor: currentID == messageID ? commentAnchor : nil)
+    }
+
     /// Thread-view filter chip: shows the remembered filter as an on/off toggle and,
     /// while on, notes how many comments it hid. Tap the label to edit the filter.
     @ViewBuilder private var threadFilterChip: some View {
@@ -105,7 +111,14 @@ struct ThreadDetailView: View {
                         }
                         .dcCard(padding: 4)
                     }
+                    if initialReadingPosition == .bottom {
+                        Label(T("No new messages"), systemImage: "checkmark.circle")
+                            .font(.subheadline).foregroundStyle(Color.dcMuted)
+                            .frame(maxWidth: .infinity).padding(.vertical, 8)
+                            .accessibilityIdentifier("thread-caught-up")
+                    }
                     composerSection.id("composer")
+                    Color.clear.frame(height: 1).id("thread-bottom")
                 }
             }
             .padding(18).dcColumn()
@@ -162,10 +175,18 @@ struct ThreadDetailView: View {
         } message: { Text(T("This comment looks like it’s about something else. Move it to its own thread?")) }
         .task(id: currentID) {
             await load()
-            // Deep-link to a specific comment, else jump to the first unread.
+            // Deep links take priority, then unread replies. Already-read topics
+            // open at the end, where the caught-up message makes their state clear.
             try? await Task.sleep(nanoseconds: 350_000_000)
-            if let cid = commentAnchor { withAnimation { proxy.scrollTo("c-\(cid)", anchor: .center) } }
-            else if let uid = firstUnreadCommentID { withAnimation { proxy.scrollTo("c-\(uid)", anchor: .top) } }
+            guard !Task.isCancelled else { return }
+            switch initialReadingPosition {
+            case .comment(let id):
+                withAnimation { proxy.scrollTo("c-\(id)", anchor: commentAnchor == id ? .center : .top) }
+            case .bottom:
+                proxy.scrollTo("thread-bottom", anchor: .bottom)
+            case .top:
+                break
+            }
             // Live updates: new comments + streaming @derek/@deepseek replies.
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
@@ -187,6 +208,7 @@ struct ThreadDetailView: View {
                         if m.pinned == 1 { Image(systemName: "pin.fill").foregroundStyle(.orange) }
                         Text(m.displaySubject).font(.system(size: 24, weight: .heavy)).foregroundStyle(Color.dcInk)
                             .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("thread-subject")
                     }
                     AuthorLine(person: m.author, date: m.createdAt)
                 }
@@ -395,6 +417,16 @@ struct ThreadDetailView: View {
 
     private func load() async {
         loading = true; defer { loading = false }
+        #if DEBUG
+        if ThreadReadingFixture.mode != nil {
+            let response = ThreadReadingFixture.response
+            message = response.message
+            comments = response.comments ?? []
+            lastVisit = response.lastVisit
+            applyCollapse(response)
+            return
+        }
+        #endif
         if let resp: MessageResponse = try? await api.call("message", messageParams) {
             message = resp.message
             comments = resp.comments ?? []
@@ -442,6 +474,9 @@ struct ThreadDetailView: View {
     /// head+tail, so a plain replace would shuffle the window and never removes the
     /// unshown middle — new comments are appended, changed bodies updated in place.
     private func pollUpdate() async {
+        #if DEBUG
+        if ThreadReadingFixture.mode != nil { return }
+        #endif
         guard let resp: MessageResponse = try? await api.call("message", messageParams) else { return }
         let fresh = resp.comments ?? []
         if resp.isCollapsed || collapsedTotal != nil {
