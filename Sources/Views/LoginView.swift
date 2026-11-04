@@ -18,7 +18,7 @@ struct LoginView: View {
                 }
 
                 VStack(spacing: 6) {
-                    Text(T("Welcome to the Decent Diaspora"))
+                    Text(T("Welcome to dcamp"))
                         .font(.system(size: 22, weight: .heavy)).foregroundStyle(Color.dcInk)
                         .multilineTextAlignment(.center)
                     Text(T("Sign in with your existing Decent support account."))

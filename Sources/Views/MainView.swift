@@ -140,7 +140,7 @@ struct MainView: View {
             case "settings": showAccount = true
             case "notifs": showNotifs = true
             case "help": showHelp = true
-            case "ipadsummary": summaryPin.kind = .home; summaryPin.title = "Diaspora summary"
+            case "ipadsummary": summaryPin.kind = .home; summaryPin.title = "dcamp summary"
             default: break
             }
             return

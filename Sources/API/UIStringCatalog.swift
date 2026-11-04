@@ -274,7 +274,7 @@ enum UIStringCatalog {
         "Use suggested subject",
         "Use “Link to this” to copy a link to any chat line.",
         "Weekly",
-        "Welcome to the Decent Diaspora",
+        "Welcome to dcamp",
         "When you start a question-like post, Derek may already have an answer to show you.",
         "Write a comment… (rich text, @mention)",
         "Write a direct message… (rich text, @mention)",

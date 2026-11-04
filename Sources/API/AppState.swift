@@ -32,7 +32,7 @@ enum SummaryKind: Equatable {
     case home, forum(Int, String), thread(Int), chat
     var label: String {
         switch self {
-        case .home: return "Diaspora summary"
+        case .home: return "dcamp summary"
         case .forum(_, let name): return name
         case .thread: return "Thread summary"
         case .chat: return "Chat summary"
