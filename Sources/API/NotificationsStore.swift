@@ -23,18 +23,23 @@ final class NotificationsStore {
 
     func start() {
         realtime.start(interval: 20) { [weak self] in
-            await self?.poll()
+            await self?.poll() ?? false
         }
     }
 
     func stop() { realtime.stop() }
 
-    func poll() async {
+    /// true when a new notification arrived
+    @discardableResult
+    func poll() async -> Bool {
+        var got = false
         if let fresh = try? await api.notifPoll(), !fresh.isEmpty {
             if let newest = fresh.max(by: { $0.id < $1.id }) { toast = newest }
             await api.notifSeen(ids: fresh.map(\.id))
+            got = true
         }
         await refreshUnread()
+        return got
     }
 
     func refreshUnread() async {

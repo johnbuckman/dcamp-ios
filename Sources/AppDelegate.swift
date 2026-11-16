@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        UserActivity.install()   // pollers back off while nobody is using the app
 
         // If launched from a notification, stash the route so the web view can apply it.
         if let payload = launchOptions?[.remoteNotification] as? [AnyHashable: Any],

@@ -186,8 +186,13 @@ actor DcampAPI {
         return DMConversationsPage(conversations: r.conversations, hasMore: (r.hasMore ?? 0) != 0)
     }
 
-    func dmThread(convoID: Int, limit: Int = 40) async throws -> DMThread {
-        try await call("dm_thread", ["id": String(convoID), "limit": String(limit)])
+    /// `idle` = seconds since the user last touched the app (nil on an explicit open):
+    /// the server only treats a fresh-enough read as "reading DMs now", which is what
+    /// starts its Basecamp ping syncs.
+    func dmThread(convoID: Int, limit: Int = 40, idle: Int? = nil) async throws -> DMThread {
+        var p = ["id": String(convoID), "limit": String(limit)]
+        if let idle { p["idle"] = String(idle) }
+        return try await call("dm_thread", p)
     }
 
     func dmSend(convoID: Int, bodyHTML: String) async throws {

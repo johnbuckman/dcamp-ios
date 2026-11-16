@@ -74,7 +74,7 @@ final class ChatStore {
 
     func start() async {
         await reload()
-        realtime.start(interval: 3) { [weak self] in await self?.poll() }
+        realtime.start(interval: 3) { [weak self] in await self?.poll() ?? false }
     }
     func stop() { realtime.stop() }
     func reload() async {
@@ -82,21 +82,24 @@ final class ChatStore {
             lines = r.lines; lastID = r.lastId ?? lines.last?.id ?? 0
         }
     }
-    private func poll() async {
+    /// true when new or still-streaming lines came in (keeps the poller fast)
+    private func poll() async -> Bool {
         // A streaming @derek/@deepseek line keeps growing under the SAME id. The old
         // dedup-by-id append never updated it, so the partial line was frozen. Re-fetch
         // from just before the lowest streaming id and MERGE by id (update + append).
         let streamingMin = lines.filter { ($0.streaming ?? 0) != 0 }.map(\.id).min()
         let since = streamingMin.map { $0 - 1 } ?? lastID
-        guard let r = try? await api.chatLines(since: since) else { return }
+        guard let r = try? await api.chatLines(since: since) else { return false }
         var byId = Dictionary(lines.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
         for line in r.lines { byId[line.id] = line }
         lines = byId.values.sorted { $0.id < $1.id }
         lastID = max(lastID, r.lastId ?? lines.last?.id ?? lastID)
+        return !r.lines.isEmpty
     }
     var sendError: String?
     func send(html: String) async -> Bool {
         guard !PlainText.strip(html).isEmpty else { return false }
+        UserActivity.touch()
         do { try await api.chatPost(bodyHTML: html); await reload(); return true }
         catch { sendError = (error as? DcampAPI.APIError)?.message ?? error.localizedDescription; return false }
     }
@@ -388,13 +391,21 @@ final class DMThreadStore {
     func start(convoID: Int) async {
         self.convoID = convoID
         await reload()
-        realtime.start(interval: 6) { [weak self] in await self?.reload() }
+        realtime.start(interval: 6) { [weak self] in await self?.pollTick() ?? false }
     }
     func stop() { realtime.stop() }
     func reload() async { if let t = try? await api.dmThread(convoID: convoID) { thread = t } }
+    /// A timed refresh: tells the server how idle we are; true when a new message came in.
+    private func pollTick() async -> Bool {
+        let before = thread.maxId ?? thread.messages.last?.id
+        guard let t = try? await api.dmThread(convoID: convoID, idle: UserActivity.idleSeconds) else { return false }
+        thread = t
+        return (t.maxId ?? t.messages.last?.id) != before
+    }
     var sendError: String?
     func send(html: String) async -> Bool {
         guard !PlainText.strip(html).isEmpty else { return false }
+        UserActivity.touch()
         do { try await api.dmSend(convoID: convoID, bodyHTML: html); await reload(); return true }
         catch { sendError = (error as? DcampAPI.APIError)?.message ?? error.localizedDescription; return false }
     }

@@ -226,7 +226,13 @@ bot replies; coffee-cup app icon.
   `dcamp_native_apply_bearer`, which is what shows admins the Settings → Server Live/Test switch.)
 - `client=native` structured-content server mode (client parses the HTML fine).
 - Composer per-context placeholders (Trix ignores a late `setAttribute`), summary collapsible
-  `##` sections, adaptive poll backoff, DM thread keyset paging (`bca`/`bid`).
+  `##` sections, DM thread keyset paging (`bca`/`bid`).
+- **Poll backoff (v1.26)**: `PollingRealtime` keeps its base pace (chat 3s, DM 6s, notifs 20s)
+  while the app was touched in the last 60s or something new arrived in the last 2 min, then
+  doubles each quiet tick to 60s; 60s while inactive (Mac window behind others). `UserActivity`
+  (passive tap/pan recognizers on every window + send + becoming active) snaps it back within 1s.
+  Timed DM refreshes send `idle=<secs>`; the server skips mark-active / Basecamp ping sync when
+  idle > 300 (`dcamp_dm_thread_json`, /d lib/dcamp_app.tcl 1.201).
 
 ---
 
