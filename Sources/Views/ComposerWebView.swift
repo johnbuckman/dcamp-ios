@@ -1,6 +1,57 @@
 import SwiftUI
 import WebKit
 
+/// Catalyst-only: the native keyboard manager turns ⌥⌫/⌘⌫/⌥⌦/⌘⌦ into sync edit
+/// commands on the WKWebView, which deadlocks the main thread (UIKeyboardTaskQueue
+/// beachball — diag 2026-08-28). We claim those key equivalents as UIKeyCommands on
+/// the composer's host view (key-command matching is where the native manager grabs
+/// them, so our commands win) and perform the delete in JS instead.
+final class ComposerKeyMonitor {
+    weak var webView: WKWebView?
+    private(set) var editorFocused = false
+
+    func setEditorFocused(_ f: Bool) { editorFocused = f }
+
+    func delete(boundary: String, dir: String) {
+        webView?.evaluateJavaScript("dcampDeleteTo('\(boundary)', '\(dir)')")
+    }
+}
+
+/// Host view for the composer WKWebView. Exposes the delete-word/line key commands
+/// so UIKit routes them to us (→ JS) instead of the WKWebView's native edit commands.
+final class ComposerHostView: UIView {
+    weak var monitor: ComposerKeyMonitor?
+
+    // Forward-delete (⌦) arrives here with HID keyCode 76 before the native keyboard
+    // manager can claim it. Swallow ⌥⌦/⌘⌦/⌃⌦ (word/line forward delete) and do them
+    // in JS — the "\u{F728}" UIKeyCommand never matches on Catalyst, but presses do.
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        for p in presses {
+            guard let k = p.key, k.keyCode == .keyboardDeleteForward else { continue }
+            let mods = k.modifierFlags
+            if mods.contains(.alternate) || mods.contains(.command) || mods.contains(.control) {
+                let boundary = (mods.contains(.alternate) || mods.contains(.control)) ? "word" : "line"
+                monitor?.delete(boundary: boundary, dir: "forward")
+                return   // swallow the press — native manager never sees it
+            }
+        }
+        super.pressesBegan(presses, with: event)
+    }
+
+    override var keyCommands: [UIKeyCommand]? {
+        guard let monitor, monitor.editorFocused else { return nil }
+        return [
+            UIKeyCommand(input: "\u{7F}",  modifierFlags: .alternate, action: #selector(dcDeleteWordBackward)),
+            UIKeyCommand(input: "\u{7F}",  modifierFlags: .command,   action: #selector(dcDeleteLineBackward)),
+            // forward delete (⌦) is intercepted in pressesBegan (keyCode 76) — the
+            // "\u{F728}" keyEquivalent never matches on Catalyst.
+        ]
+    }
+
+    @objc private func dcDeleteWordBackward() { monitor?.delete(boundary: "word", dir: "backward") }
+    @objc private func dcDeleteLineBackward() { monitor?.delete(boundary: "line", dir: "backward") }
+}
+
 /// Bridges the bundled Trix editor (Resources/editor/editor.html) into SwiftUI.
 /// Keeps `model.html` current via the JS `composer` message handler, and lets
 /// Swift insert uploaded images.
@@ -232,7 +283,7 @@ struct ComposerWebView: UIViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(model: model) }
 
-    func makeUIView(context: Context) -> WKWebView {
+    func makeUIView(context: Context) -> ComposerHostView {
         let cfg = WKWebViewConfiguration()
         cfg.userContentController.add(context.coordinator, name: "composer")
         let web = WKWebView(frame: .zero, configuration: cfg)
@@ -244,15 +295,30 @@ struct ComposerWebView: UIViewRepresentable {
         web.scrollView.showsVerticalScrollIndicator = false
         web.scrollView.showsHorizontalScrollIndicator = false
         model.webView = web
+        context.coordinator.keyMonitor.webView = web
         applyTheme(to: web)
+
+        let host = ComposerHostView()
+        host.monitor = context.coordinator.keyMonitor
+        web.translatesAutoresizingMaskIntoConstraints = false
+        host.addSubview(web)
+        NSLayoutConstraint.activate([
+            web.topAnchor.constraint(equalTo: host.topAnchor),
+            web.bottomAnchor.constraint(equalTo: host.bottomAnchor),
+            web.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+            web.trailingAnchor.constraint(equalTo: host.trailingAnchor),
+        ])
 
         if let url = editorURL() {
             web.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
         }
-        return web
+        return host
     }
 
-    func updateUIView(_ uiView: WKWebView, context: Context) { applyTheme(to: uiView) }
+    func updateUIView(_ uiView: ComposerHostView, context: Context) {
+        guard let web = uiView.subviews.compactMap({ $0 as? WKWebView }).first else { return }
+        applyTheme(to: web)
+    }
 
     /// Keep the embedded Trix editor's light/dark appearance in sync with the app's
     /// theme override (its CSS uses `color-scheme`/`canvas`, which follow this).
@@ -272,6 +338,7 @@ struct ComposerWebView: UIViewRepresentable {
     @MainActor
     final class Coordinator: NSObject, WKScriptMessageHandler {
         let model: ComposerModel
+        let keyMonitor = ComposerKeyMonitor()
         init(model: ComposerModel) { self.model = model }
 
         func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -279,6 +346,8 @@ struct ComposerWebView: UIViewRepresentable {
             switch body["type"] as? String {
             case "ready":
                 model.ready = true
+            case "focus":
+                keyMonitor.setEditorFocused(body["on"] as? Bool ?? false)
             case "change":
                 model.html = body["html"] as? String ?? ""
                 model.contentLength = body["length"] as? Int ?? 0
