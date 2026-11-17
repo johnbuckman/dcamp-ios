@@ -195,6 +195,15 @@ final class SessionStore {
         AppConfig.setUseLocalDev(local)     // subsequent apiURL / OAuth URLs now point at the new server
     }
 
+    /// The server rejected our saved token while the app was running (expired,
+    /// revoked, account gone). Drop it and fall back to the logged-out state, the
+    /// same as a stale token found at launch.
+    func authLost() async {
+        await api.setToken(nil)
+        me = nil
+        phase = .loggedOut
+    }
+
     func logout() async {
         // Detach this device from push + clear the badge BEFORE dropping the token,
         // so the server stops delivering notifications to a signed-out device.

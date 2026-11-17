@@ -233,6 +233,16 @@ bot replies; coffee-cup app icon.
   (passive tap/pan recognizers on every window + send + becoming active) snaps it back within 1s.
   Timed DM refreshes send `idle=<secs>`; the server skips mark-active / Basecamp ping sync when
   idle > 300 (`dcamp_dm_thread_json`, /d lib/dcamp_app.tcl 1.201).
+- **Share a link to a DM (v1.27)**: target `DcampShare` (`ShareExtension/`, iOS/iPad only —
+  `platformFilter: iOS`, not in the Mac build) puts "dcamp" in Safari/Brave share sheets. It has
+  no UI or login: it opens `dcamp-share://dm?url=…&title=…` (scheme in `Resources/Info.plist`)
+  by calling `openURL:options:completionHandler:` on the host UIApplication via the responder
+  chain (Apple-unsupported; works on iOS 26, which asks "Open in dcamp?" first). `Router.handle(url:)`
+  → `pendingShare` → `ShareToDMView`, hosted in **RootView** so it shows when logged out too
+  (then ONLY a Log in button). Picking a DM / New message does **not send**: it appends the link
+  to that DM's composer draft (`ComposerModel.appendToDraft`, key `dm:<id>`, empty first line +
+  focus) and opens the DM. A server "Please log in…" reply (no code) = stale token mid-session
+  → `SessionStore.authLost()`. Test without Safari: `xcrun simctl openurl $UDID 'dcamp-share://dm?url=…'`.
 
 ---
 

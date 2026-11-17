@@ -20,6 +20,18 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<!-- dcamp-share://dm?url=…&title=… from the share extension (ShareExtension/) -->
+			<key>CFBundleURLName</key>
+			<string>com.decentespresso.dcamp.share</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>dcamp-share</string>
+			</array>
+		</dict>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<!-- DEV ONLY: allow http to the local dcamp NaviServer (localhost:8000).

@@ -7,8 +7,8 @@ options:
 
 settings:
   base:
-    MARKETING_VERSION: "1.26"
-    CURRENT_PROJECT_VERSION: "27"
+    MARKETING_VERSION: "1.27"
+    CURRENT_PROJECT_VERSION: "28"
     SWIFT_VERSION: "5.0"
     DEVELOPMENT_TEAM: ""          # set your Apple Developer Team ID for device/App Store builds
     CODE_SIGN_STYLE: Automatic
@@ -21,6 +21,12 @@ targets:
     sources:
       - path: Sources
       - path: Resources
+    dependencies:
+      # Share sheet entry ("dcamp" in Safari/Brave → Send link to… a DM).
+      # iOS/iPad only for now: the Mac build signs with empty entitlements and
+      # the open-the-app trick isn't verified on Catalyst.
+      - target: DcampShare
+        platformFilter: iOS
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.decentespresso.dcamp
@@ -37,3 +43,20 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         ENABLE_USER_SCRIPT_SANDBOXING: YES
         SWIFT_EMIT_LOC_STRINGS: YES
+
+  DcampShare:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: ShareExtension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.decentespresso.dcamp.share
+        PRODUCT_NAME: DcampShare
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SUPPORTS_MACCATALYST: NO
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: ShareExtension/Info.plist
+        APPLICATION_EXTENSION_API_ONLY: YES
+        ENABLE_USER_SCRIPT_SANDBOXING: YES

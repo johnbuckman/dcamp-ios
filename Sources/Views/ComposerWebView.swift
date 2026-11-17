@@ -28,6 +28,21 @@ final class ComposerModel {
               let saved = UserDefaults.standard.string(forKey: defaultsKey(k)),
               !PlainText.strip(saved).isEmpty else { return }
         loadHTML(saved)
+        if Self.focusOnLoad.remove(k) != nil { focus() }
+    }
+
+    /// Draft keys whose composer should take focus when it next restores its draft
+    /// (a link just shared into that DM: the cursor waits on the empty first line).
+    static var focusOnLoad: Set<String> = []
+
+    /// Put `html` into a context's saved draft, after anything already drafted
+    /// there, so the composer shows it when that screen opens. Nothing is sent.
+    static func appendToDraft(key: String, html: String, focus: Bool = true) {
+        let dk = "dcamp.draft.\(key)"
+        let existing = UserDefaults.standard.string(forKey: dk) ?? ""
+        let merged = PlainText.strip(existing).isEmpty ? html : existing + html
+        UserDefaults.standard.set(merged, forKey: dk)
+        if focus { focusOnLoad.insert(key) }
     }
 
     /// Persist the current editor contents as this context's draft (or clear it if empty).

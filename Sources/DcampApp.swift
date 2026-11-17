@@ -18,6 +18,7 @@ struct DcampApp: App {
                 .environment(summaryPin)
                 .environment(forumFilter)
                 .task { await session.start() }
+                .onOpenURL { url in router.handle(url: url) }
         }
     }
 }

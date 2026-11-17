@@ -9,11 +9,33 @@ final class Router {
     var threadID: Int?
     var dmID: Int?
     var threadSiblings: [Int] = []      // ordered thread ids of the board being browsed → prev/next nav
+    /// A link shared into dcamp from another app's share sheet, waiting for the
+    /// user to pick a DM conversation (MainView presents ShareToDMView for it).
+    var pendingShare: SharedLink?
+
+    /// `dcamp-share://dm?url=…&title=…`, sent by the share extension. Returns
+    /// false for any other URL.
+    @discardableResult
+    func handle(url: URL) -> Bool {
+        guard url.scheme == "dcamp-share",
+              let c = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let link = c.queryItems?.first(where: { $0.name == "url" })?.value,
+              let u = URL(string: link), ["http", "https"].contains(u.scheme?.lowercased() ?? "") else { return false }
+        let title = c.queryItems?.first(where: { $0.name == "title" })?.value ?? ""
+        pendingShare = SharedLink(url: link, title: title)
+        return true
+    }
 
     func open(route token: String?) {
         if let pid = DcampRoute.personID(from: token) { personID = pid }
         else if let mid = DcampRoute.messageID(from: token) { threadID = mid }
     }
+}
+
+struct SharedLink: Identifiable, Equatable {
+    let id = UUID()
+    var url: String
+    var title: String
 }
 
 /// The summary pinned to the iPad side panel (the web's "Show in sidebar").

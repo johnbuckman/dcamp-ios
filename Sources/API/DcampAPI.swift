@@ -16,6 +16,9 @@ actor DcampAPI {
         let message: String
         let code: String?
         var errorDescription: String? { message }
+        /// The server's not-logged-in reply (dcamp_app.tcl: "Please log in at
+        /// /support/", no code): the saved token is no longer valid.
+        var isAuthLost: Bool { message.hasPrefix("Please log in") }
     }
 
     init() {
