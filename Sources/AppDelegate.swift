@@ -13,6 +13,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         UNUserNotificationCenter.current().delegate = self
         UserActivity.install()   // pollers back off while nobody is using the app
 
+        #if targetEnvironment(macCatalyst)
+        MacUpdater.shared.start()
+        #endif
+
         // If launched from a notification, stash the route so the web view can apply it.
         if let payload = launchOptions?[.remoteNotification] as? [AnyHashable: Any],
            let route = PushManager.route(from: payload) {

@@ -20,5 +20,13 @@ struct DcampApp: App {
                 .task { await session.start() }
                 .onOpenURL { url in router.handle(url: url) }
         }
+        #if targetEnvironment(macCatalyst)
+        .commands {
+            CommandGroup(after: .appInfo) {
+                Button(T("Check for Updates…")) { MacUpdater.shared.checkForUpdates() }
+                    .disabled(!MacUpdater.shared.canCheckForUpdates)
+            }
+        }
+        #endif
     }
 }
