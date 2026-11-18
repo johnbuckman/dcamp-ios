@@ -119,6 +119,12 @@ struct MainView: View {
     }
 
     private func startLive() async {
+        #if DEBUG
+        if ThreadReadingFixture.mode != nil {
+            path = [.thread(ThreadReadingFixture.messageID)]
+            return
+        }
+        #endif
         strings.lang = session.lang
         await strings.load()
         notifStore.start()
@@ -293,7 +299,12 @@ struct ForumsHomeView: View {
         .background(Color.dcBg)
         .scrollContentBackground(.hidden)
         .navigationBarTitleDisplayMode(.inline)
-        .task { dmUnread = await DcampAPI.shared.dmUnread(); await loadChatStat() }
+        .task {
+            #if DEBUG
+            if ThreadReadingFixture.mode != nil { return }
+            #endif
+            dmUnread = await DcampAPI.shared.dmUnread(); await loadChatStat()
+        }
         .refreshable { dmUnread = await DcampAPI.shared.dmUnread(); await loadChatStat(); await session.refresh() }
     }
 
