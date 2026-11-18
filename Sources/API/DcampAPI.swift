@@ -11,6 +11,9 @@ actor DcampAPI {
     private var token: String?
     private let session: URLSession
     private let decoder: JSONDecoder
+    #if DEBUG
+    private let useBookmarkFixture: Bool
+    #endif
 
     struct APIError: LocalizedError {
         let message: String
@@ -21,7 +24,10 @@ actor DcampAPI {
         var isAuthLost: Bool { message.hasPrefix("Please log in") }
     }
 
-    init() {
+    init(session: URLSession? = nil) {
+        #if DEBUG
+        useBookmarkFixture = session == nil && BookmarkFixture.enabled
+        #endif
         let cfg = URLSessionConfiguration.ephemeral
         cfg.httpShouldSetCookies = false
         cfg.httpCookieAcceptPolicy = .never
@@ -30,7 +36,7 @@ actor DcampAPI {
         // shorter of the two wins), so normal calls stay snappy while AI actions get
         // the full window.
         cfg.timeoutIntervalForRequest = 120
-        session = URLSession(configuration: cfg)
+        self.session = session ?? URLSession(configuration: cfg)
 
         decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
@@ -302,6 +308,9 @@ actor DcampAPI {
 
     /// POST the form, validate HTTP + the `{ok:false,error}` envelope, return body Data.
     func rawData(_ action: String, _ params: [String: String]) async throws -> Data {
+        #if DEBUG
+        if useBookmarkFixture { return try await BookmarkFixtureServer.shared.data(action, params) }
+        #endif
         var req = URLRequest(url: AppConfig.apiURL)
         req.httpMethod = "POST"
         req.setValue("application/x-www-form-urlencoded; charset=utf-8", forHTTPHeaderField: "Content-Type")

@@ -1,3 +1,6 @@
+include:
+  - project-bookmarks.yml
+
 name: Dcamp
 options:
   bundleIdPrefix: com.decentespresso

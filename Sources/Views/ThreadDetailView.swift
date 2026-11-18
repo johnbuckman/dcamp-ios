@@ -11,6 +11,7 @@ struct ThreadDetailView: View {
     @Environment(SessionStore.self) private var session
     @Environment(Router.self) private var router
     @Environment(ForumFilterStore.self) private var forumFilter
+    @Environment(BookmarksStore.self) private var bookmarks
     @Environment(\.dismiss) private var dismiss
     @State private var showFilter = false
     @State private var currentID: Int
@@ -32,6 +33,8 @@ struct ThreadDetailView: View {
     @State private var offtopicCommentID: Int?
     @State private var showOfftopic = false
     @State private var composeError: String?
+    @State private var bookmarkError: String?
+    @State private var bookmarkNotice: String?
 
     private let api = DcampAPI.shared
 
@@ -118,6 +121,21 @@ struct ThreadDetailView: View {
         .alert(T("Couldn’t post"), isPresented: Binding(get: { composeError != nil }, set: { if !$0 { composeError = nil } })) {
             Button(T("OK")) { composeError = nil }
         } message: { Text(composeError ?? "") }
+        .alert(T("Couldn’t update bookmark"), isPresented: Binding(get: { bookmarkError != nil }, set: { if !$0 { bookmarkError = nil } })) {
+            Button(T("OK")) { bookmarkError = nil }
+        } message: { Text(bookmarkError ?? "") }
+        .overlay(alignment: .bottom) {
+            if let bookmarkNotice {
+                Text(bookmarkNotice).font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.dcInk).padding(12)
+                    .background(Color.dcPanel, in: Capsule()).shadow(radius: 4).padding(12)
+                    .accessibilityIdentifier("bookmark-notice")
+            }
+        }
+        .task(id: bookmarkNotice) {
+            guard bookmarkNotice != nil else { return }
+            do { try await Task.sleep(for: .seconds(2)); bookmarkNotice = nil } catch {}
+        }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 if siblingIndex != nil {
@@ -125,9 +143,11 @@ struct ThreadDetailView: View {
                     Button { if let p = prevSibling { goto(p) } } label: {
                         Image(systemName: "chevron.up").frame(width: 44, height: 30).contentShape(Rectangle())
                     }.disabled(prevSibling == nil)
+                        .accessibilityIdentifier("previous-topic")
                     Button { if let n = nextSibling { goto(n) } } label: {
                         Image(systemName: "chevron.down").frame(width: 44, height: 30).contentShape(Rectangle())
                     }.disabled(nextSibling == nil)
+                        .accessibilityIdentifier("next-topic")
                 }
             }
         }
@@ -164,7 +184,8 @@ struct ThreadDetailView: View {
             await load()
             // Deep-link to a specific comment, else jump to the first unread.
             try? await Task.sleep(nanoseconds: 350_000_000)
-            if let cid = commentAnchor { withAnimation { proxy.scrollTo("c-\(cid)", anchor: .center) } }
+            guard !Task.isCancelled else { return }
+            if currentID == messageID, let cid = commentAnchor { withAnimation { proxy.scrollTo("c-\(cid)", anchor: .center) } }
             else if let uid = firstUnreadCommentID { withAnimation { proxy.scrollTo("c-\(uid)", anchor: .top) } }
             // Live updates: new comments + streaming @derek/@deepseek replies.
             while !Task.isCancelled {
@@ -206,6 +227,7 @@ struct ThreadDetailView: View {
             Button { anchor.share(url: permalink(), title: m.displaySubject) } label: {
                 Label(T("Share"), systemImage: "square.and.arrow.up")
             }
+            if session.me != nil { bookmarkAction() }
             if session.canPost {
                 Button { quote(m.html, aid: m.author?.id, aname: m.author?.name, src: "#/message/\(currentID)") } label: { Label(T("Quote & reply"), systemImage: "quote.opening") }
             }
@@ -229,6 +251,7 @@ struct ThreadDetailView: View {
         } label: {
             Image(systemName: "ellipsis").font(.system(size: 18)).foregroundStyle(Color.dcMuted).padding(6)
         }
+        .accessibilityIdentifier("message-actions")
     }
 
     // MARK: comment row
@@ -255,6 +278,7 @@ struct ThreadDetailView: View {
             Button { anchor.share(url: permalink(commentID: c.id), title: commentShareTitle(c)) } label: {
                 Label(T("Share"), systemImage: "square.and.arrow.up")
             }
+            if session.me != nil && c.streaming != 1 { bookmarkAction(commentID: c.id) }
             if session.canPost {
                 Button { quote(c.html, aid: c.author?.id, aname: c.author?.name, src: "#/message/\(currentID)?c=\(c.id)") } label: { Label(T("Quote & reply"), systemImage: "quote.opening") }
             }
@@ -265,6 +289,24 @@ struct ThreadDetailView: View {
         } label: {
             Image(systemName: "ellipsis").font(.system(size: 15)).foregroundStyle(Color.dcMuted).padding(4)
         }
+        .accessibilityIdentifier("comment-actions-\(c.id)")
+    }
+
+    private func bookmarkAction(commentID: Int = 0) -> some View {
+        let target = BookmarkTarget(messageID: currentID, commentID: commentID)
+        let saved = bookmarks.isBookmarked(target)
+        return Button {
+            Task {
+                do {
+                    try await bookmarks.set(target, on: !saved)
+                    bookmarkNotice = saved ? T("Bookmark removed") : T("Bookmarked")
+                } catch { bookmarkError = error.localizedDescription }
+            }
+        } label: {
+            Label(saved ? T("Remove bookmark") : T("Bookmark"), systemImage: saved ? "bookmark.slash" : "bookmark")
+        }
+        .disabled(bookmarks.pending != nil)
+        .accessibilityIdentifier("bookmark-toggle-\(target.key)")
     }
 
     /// Inline comment composer at the end of the thread (or a read-only notice),
@@ -395,7 +437,9 @@ struct ThreadDetailView: View {
 
     private func load() async {
         loading = true; defer { loading = false }
+        let revision = bookmarks.revision, requestedID = currentID
         if let resp: MessageResponse = try? await api.call("message", messageParams) {
+            bookmarks.applyThread(resp.bookmarks, messageID: requestedID, at: revision)
             message = resp.message
             comments = resp.comments ?? []
             lastVisit = resp.lastVisit
@@ -442,7 +486,9 @@ struct ThreadDetailView: View {
     /// head+tail, so a plain replace would shuffle the window and never removes the
     /// unshown middle — new comments are appended, changed bodies updated in place.
     private func pollUpdate() async {
+        let revision = bookmarks.revision, requestedID = currentID
         guard let resp: MessageResponse = try? await api.call("message", messageParams) else { return }
+        bookmarks.applyThread(resp.bookmarks, messageID: requestedID, at: revision)
         let fresh = resp.comments ?? []
         if resp.isCollapsed || collapsedTotal != nil {
             var merged = comments

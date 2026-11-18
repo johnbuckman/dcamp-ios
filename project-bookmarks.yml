@@ -1,0 +1,33 @@
+targets:
+  DcampBookmarkTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources: [{path: BookmarkTests}]
+    dependencies: [{target: Dcamp}]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        SUPPORTS_MACCATALYST: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/dcamp.app/dcamp"
+        "TEST_HOST[sdk=macosx*]": "$(BUILT_PRODUCTS_DIR)/dcamp.app/Contents/MacOS/dcamp"
+  DcampBookmarkUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources: [{path: BookmarkUITests}]
+    dependencies: [{target: Dcamp}]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  Dcamp:
+    build:
+      targets: {Dcamp: all}
+  DcampBookmarks:
+    build:
+      targets: {Dcamp: all}
+    test:
+      environmentVariables:
+        DCAMP_BOOKMARKS_TEST: populated
+      targets: [DcampBookmarkTests, DcampBookmarkUITests]

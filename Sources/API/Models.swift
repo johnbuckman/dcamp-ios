@@ -201,6 +201,7 @@ struct MessageResponse: Codable {
     var ok: Bool?
     var projectName: String?
     var lastVisit: Int?          // epoch of the viewer's previous visit → since-last-visit marker
+    var bookmarks: ThreadBookmarks?
     var message: MessageDetail
     var comments: [Comment]?
     // Long threads (>20 comments) come back COLLAPSED: only the first `head` + last

@@ -34,6 +34,14 @@ final class SessionStore {
     /// Called once on launch: resume a saved token or show the login screen.
     func start() async {
         #if DEBUG
+        if BookmarkFixture.enabled {
+            me = BookmarkFixture.author
+            boards = [Board(id: 1, name: "General Forum")]
+            canPost = false
+            lang = ProcessInfo.processInfo.environment["DCAMP_BOOKMARKS_LANG"] ?? "en"
+            phase = .loggedIn
+            return
+        }
         // Screenshot harness: force a UI language (seeds the X-Dcamp-Lang header pref).
         if let l = ProcessInfo.processInfo.environment["DCAMP_LANG"] {
             UserDefaults.standard.set(l, forKey: "dcamp_lang")

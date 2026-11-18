@@ -63,6 +63,23 @@ xcodebuild -scheme Dcamp \
 Set `DEVELOPMENT_TEAM` in `project.yml` (or in Xcode → Signing) before building
 for a device or App Store submission.
 
+### Bookmarks
+
+The bookmark icon beside the notification bell opens the latest 15 saved items;
+**See all bookmarks** opens the full list. Posts and comments use **Bookmark** /
+**Remove bookmark** in their ⋯ menus, and list rows have a separate remove ×.
+Comment bookmarks open at that exact reply, including inside collapsed threads.
+On iPad, **Show in sidebar** keeps the list visible while reading.
+
+This uses the web's existing `bookmarks_list`, `bookmark_set` (`id`, `c`, `on`),
+and `message.bookmarks` (`m`, `c`) contract. Bookmarks are private and shared with
+the web; the app does not maintain a separate local bookmark collection. The
+native recent-items sheet uses the web's labels, row layout and empty state.
+
+Run `xcodebuild -scheme DcampBookmarks -destination 'platform=iOS Simulator,name=iPhone 17' test`
+after `xcodegen generate`. UI tests use an offline DEBUG-only fixture transport,
+which never reads or changes a real member's bookmarks.
+
 ## JS bridge for the dcamp SPA
 
 When running inside the app, `window.dcampNative` is available and
